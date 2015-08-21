@@ -14,8 +14,6 @@ import           Language.Angler.Error
 import           Language.Angler.SrcLoc
 import           Language.Angler.Parser.Token
 
-import           Control.Applicative       (liftA2)
-import           Control.Monad             (liftM)
 import           Control.Monad.Identity    (Identity(..))
 import           Control.Monad.Error       (ErrorT(..), throwError)
 import           Control.Monad.State       (StateT(..), get, gets, modify, put)
