@@ -8,7 +8,7 @@
 {
 {-# OPTIONS_GHC -funbox-strict-fields #-}
 
-module Language.Angler.Parser.Lexer (lexToken, runLP, runLexer) where
+module Language.Angler.Parser.Lexer (lexToken, runLP, runLexer, lexer) where
 
 import           Language.Angler.Error
 import           Language.Angler.SrcLoc
@@ -16,35 +16,55 @@ import           Language.Angler.Parser.Token
 
 import           Control.Monad.Identity    (Identity(..))
 import           Control.Monad.Error       (ErrorT(..), throwError)
-import           Control.Monad.State       (StateT(..), get, gets, modify, put)
+import           Control.Monad.State       (StateT(..), get, gets, modify)
 import qualified Data.Bits                 ((.&.), shiftR)
-import           Data.Either               (Either(..), isRight)
-import           Data.List                 (unfoldr)
+import           Data.Either               (isRight)
+-- import           Data.List                 (unfoldr)
 import           Data.Map.Strict           (Map)
 import qualified Data.Map.Strict           as Map (lookup, fromList)
 import           Data.Word                 (Word8)
 
 import           Debug.Trace               (trace, traceShow)
 
-import           Prelude                   hiding (id, lookup, fromList)
+import           Prelude                   hiding (id, lookup, span)
 
 }
 
-$nl          = [\n \r \f]
-$whitechar   = [$nl \v \ ]
-$white_no_nl = $whitechar # \n
-$tab         = \t
+----------------------------------------
+-- sets
 
-$digit = 0-9
-$small = [a-z]
-$large = [A-Z]
-$alpha = [$small $large]
+$nl           = [\n \r \f]
+$whitechar    = [$nl \v \ ]
+$white_no_nl  = $whitechar # \n
+$tab          = \t
 
-$escape_chars = [abfnrtv\\'\"\?]
+$digit        = 0-9
+$hexdigit     = [ $digit a-f A-F]
+$symbolstart  = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \, \: \\ ]
+$symbol       = [ $symbolstart \' ]             -- consider character literals
+$small        = a-z
+$large        = A-Z
+$alpha        = [ $small $large ]
 
-@number     = [$digit]+
-@identifier = $alpha($alpha|_|$digit)*
+$escape_chars = [ abfnrtv\\'\"\? ]
 
+----------------------------------------
+-- regex
+
+@number       = $digit+
+
+-- identifiers
+@opalpha      = $alpha [ $alpha $digit ]*
+@identalpha   = ((\_)? @opalpha)+ (\_)?
+
+@opsymbol     = $symbolstart $symbol*
+@identsymbol  = ((\_)? @opsymbol)+ (\_)?
+
+@identifier   = @identalpha | @identsymbol
+
+-- for namespaces (modules)
+@namespace    = (@identalpha \.)*
+@qualified    = @namespace @identifier
 --------------------------------------------------------------------------------
 
 angler :-
@@ -73,25 +93,22 @@ $tab            ;
         ()      { newLayoutContext TkVLCurly }
 }
 
+<empty_layout> {
+        ()      { emptyLayout }
+}
+
 {
 
 --------------------------------------------------------------------------------
 
-reservedWords :: Map String Token
-reservedWords = Map.fromList
+reserved :: Map String Token
+reserved = Map.fromList
         [ ("where" , TkWhere)
         , ("forall", TkForall)
         , ("exists", TkExists)
         , ("with"  , TkWith)
         , ("on"    , TkOn)
         , ("is"    , TkIs)
-        ]
-
-reservedSymbols :: Map String Token
-reservedSymbols = Map.fromList
-        [--(":" , TkColon)
-        --, ("->", TkArrow)
-        --, ("=" , TkEqual)
         ]
 
 ----------------------------------------
@@ -107,8 +124,8 @@ type AlexInput = ( SrcLoc               -- current position
                  )
 
 -- from Alex's monad wrapper
-alexIgnoreBytes :: AlexInput -> AlexInput
-alexIgnoreBytes (l,c,_,s) = (l,c,[],s)
+-- alexIgnoreBytes :: AlexInput -> AlexInput
+-- alexIgnoreBytes (l,c,_,s) = (l,c,[],s)
 
 -- from Alex's monad wrapper
 alexInputPrevChar :: AlexInput -> Char
@@ -118,7 +135,7 @@ alexInputPrevChar (_,c,_,_) = c
 alexGetByte :: AlexInput -> Maybe (Byte,AlexInput)
 alexGetByte inp = case inp of
         (p, c, (b:bs), s    ) -> Just (b,(p,c,bs,s))
-        (p, c, []    , []   ) -> Nothing
+        (_, _, []    , []   ) -> Nothing
         (p, _, []    , (c:s)) -> let p'     = locMove p c
                                      b : bs = utf8Encode c
                                  in p' `seq` Just (b, (p', c, bs, s))
@@ -199,8 +216,8 @@ evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) a
 evalLP input loc = check . runLP input loc
     where
         check r = if isRight r
-                then let Right (x, st) = r in Right x
-                else let Left l        = r in Left l
+                then let Right (x, _st) = r in Right x
+                else let Left l         = r in Left l
 
 ----------------------------------------
 -- LPState's manipulation
@@ -265,7 +282,7 @@ begin ls _span _buf _len = pushLexState ls >> lexToken
 -- from GHC's lexer
 identifier :: Action
 identifier span buf len = let str = take len buf in
-        case Map.lookup str reservedWords of
+        case Map.lookup str reserved of
                 Just tk -> maybeLayout tk >> return (Loc span tk)
                 Nothing -> return (Loc span (TkIdentifier str))
     where
@@ -284,19 +301,21 @@ newLayoutContext tk span _buf len = do
         ctx <- gets lp_context
         case ctx of
                 Layout prev_off : _ | prev_off >= offset ->
-                        throwError (Loc span (LexError LErrEmptyScope))
+                        -- pushLexState empty_layout
+                        -- return (Loc span tk)
+                        throwError (Loc span (LexError LErrEmptyLayout))
                 _ -> pushContext (Layout offset) >> return (Loc span tk)
+
+emptyLayout :: Action
+emptyLayout span _buf _len = popLexState >> pushLexState bol >> return (Loc span TkVRCurly)
 
 processLayout :: Action
 processLayout span _input _len = do
         pos <- getOffside span
         case pos of
+                -- not popping the lexState, we might have a ';' or another '}' to insert
                 -- inserting '}'
-                LT -> do
-                        trace "}" (return ())
-                        popContext
-                        -- not popping the lexState, we might have a ';' or another '}' to insert
-                        return (Loc span TkVRCurly)
+                LT -> trace "}" (return ()) >> popContext >> return (Loc span TkVRCurly)
                 -- inserting ';'
                 EQ -> trace ";" (return ()) >> popLexState >> return (Loc span TkSemicolon)
                 -- keep lexing as same in line
@@ -317,15 +336,15 @@ lexer = (>>=) lexToken
 
 lexToken :: LP (Located Token)
 lexToken = do
-        inp@(l,c,bs,b) <- getInput
+        inp@(l,_c,_bs,b) <- getInput
         ls <- peekLexState
         case alexScan inp ls of
-                AlexEOF                            -> return (Loc (srcLocSpan l l) TkEOF)
-                AlexError (l,c,_,_)                ->
-                        throwError (Loc (srcLocSpan l l) (LexError (LErrUnexpectedCharacter c)))
-                AlexSkip  inp' len                 -> setInput inp' >> lexToken
-                --AlexToken inp'@(l',_,_,b') len act -> setInput inp' >> act (srcLocSpan l l') b len
-                AlexToken inp'@(l',_,_,b') len act -> do
+                AlexEOF                           -> return (Loc (srcLocSpan l l) TkEOF)
+                AlexError (l',_,_,c':_)             ->
+                        throwError (Loc (srcLocSpan l l') (LexError (LErrUnexpectedCharacter c')))
+                AlexSkip  inp' _len               -> setInput inp' >> lexToken
+                -- AlexToken inp'@(l',_,_,_) len act -> setInput inp' >> act (srcLocSpan l l') b len
+                AlexToken inp'@(l',_,_,_) len act -> do
                         gets lp_lex_state >>= \lss -> trace (" states: " ++ show lss) (return ())
                         gets lp_context   >>= \lcs -> trace ("context: " ++ show lcs) (return ())
                         setInput inp' >> act (srcLocSpan l l') b len

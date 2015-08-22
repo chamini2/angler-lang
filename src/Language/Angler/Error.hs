@@ -22,7 +22,7 @@ instance ErrorC.Error (Located Error) where
 
 data LexError
   = LErrUnexpectedCharacter     Char
-  | LErrEmptyScope
+  | LErrEmptyLayout
   | LErr                        String
   deriving Show
 

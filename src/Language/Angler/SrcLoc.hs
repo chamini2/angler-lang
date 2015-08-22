@@ -7,6 +7,8 @@ module Language.Angler.SrcLoc
         , srcLocSpan
         ) where
 
+import           Prelude hiding (span)
+
 data SrcLoc
   = SrcLoc              { srcLocFile    :: String
                         , srcLocLine    :: Int     -- line number, begins at 1
