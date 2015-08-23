@@ -17,12 +17,13 @@ description:
 
 homepage:            https://github.com/angler-lang
 
+extra-source-files:  README.md
+
 bug-reports:         https://github.com/angler-lang/angler-lang/issues
 source-repository head
   type:     git
   location: https://github.com/angler-lang/angler-lang.git
 
-extra-source-files:  README.md
 
 executable angler
   hs-source-dirs:      src
@@ -35,3 +36,4 @@ executable angler
   -- other-extensions:
   build-depends:       base >=4.7 && <4.8, array, containers, mtl
   default-language:    Haskell2010
+  ghc-options:         -Wall -Werror
