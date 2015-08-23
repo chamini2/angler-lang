@@ -21,11 +21,11 @@ instance ErrorC.Error (Located Error) where
         strMsg = Loc SrcSpanNoInfo . Err
 
 data LexError
-  = LErrUnexpectedCharacter     Char
-  | LErrEmptyLayout
-  | LErr                        String
+  = LErr                        String
+  | LErrUnexpectedCharacter     Char
   deriving Show
 
 data ParseError
-  = PErr        String
+  = PErr                String
+  | PErrEmptyLayout
   deriving Show
