@@ -6,7 +6,7 @@
 -- Inspired in GHC's Lexer
 --------------------------------------------------------------------------------
 {
-{-# OPTIONS_GHC -funbox-strict-fields #-}
+{-# OPTIONS_GHC -funbox-strict-fields -w #-}
 
 module Language.Angler.Parser.Lexer (lexToken, runLP, runLexer, lexer) where
 
@@ -18,8 +18,6 @@ import           Control.Monad.Identity    (Identity(..))
 import           Control.Monad.Error       (ErrorT(..), throwError)
 import           Control.Monad.State       (StateT(..), get, gets, modify)
 import qualified Data.Bits                 ((.&.), shiftR)
-import           Data.Either               (isRight)
--- import           Data.List                 (unfoldr)
 import           Data.Map.Strict           (Map)
 import qualified Data.Map.Strict           as Map (lookup, fromList)
 import           Data.Word                 (Word8)
@@ -74,7 +72,7 @@ $tab            ;
 
 -- comments
 "--" .*         ;
-"{-"            { push comment }        -- includes nested comments
+"{-"            { push comment }        -- nested comments
 
 <comment> {
         "-}"    { pop }
@@ -92,9 +90,9 @@ $tab            ;
 }
 
 <0> {
+        \n      { push bol }
         @identifier
                 { identifier }
-        \n      { push bol }
 }
 
 <layout> {
@@ -138,10 +136,6 @@ type AlexInput
     , [Byte]                    -- pending bytes on current char
     , String                    -- current input string
     )
-
--- from Alex's monad wrapper
--- alexIgnoreBytes :: AlexInput -> AlexInput
--- alexIgnoreBytes (l,c,_,s) = (l,c,[],s)
 
 -- from Alex's monad wrapper
 alexInputPrevChar :: AlexInput -> Char
@@ -224,16 +218,16 @@ runLP input loc = runIdentity . runErrorT . flip runStateT initialLPState
 execLP :: String -> SrcLoc -> LP a -> Either (Located Error) LPState
 execLP input loc = check . runLP input loc
     where
-        check r = if isRight r
-                then let Right (_, st) = r in Right st
-                else let Left l        = r in Left l
+        check r = case r of
+                Right (_, st) -> Right st
+                Left  l       -> Left l
 
 evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) a
 evalLP input loc = check . runLP input loc
     where
-        check r = if isRight r
-                then let Right (x, _st) = r in Right x
-                else let Left l         = r in Left l
+        check r = case r of
+                Right (a, _st) -> Right a
+                Left  l        -> Left l
 
 ----------------------------------------
 -- LPState's manipulation
@@ -372,6 +366,7 @@ lexToken = do
                 AlexEOF -> do
                         ctx <- gets lp_context
                         case ctx of
+                                -- closing all the open layouts we had
                                 _ : _  -> popContext >> return (Loc (srcLocSpan l l) TkVRCurly)
                                 _      -> return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
