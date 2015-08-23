@@ -40,8 +40,7 @@ $tab          = \t
 
 $digit        = 0-9
 $hexdigit     = [ $digit a-f A-F]
-$symbolstart  = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \, \: \\ ]
-$symbol       = [ $symbolstart \' ]             -- consider character literals
+$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \, \: \\ ]
 $small        = a-z
 $large        = A-Z
 $alpha        = [ $small $large ]
@@ -54,10 +53,10 @@ $escape_chars = [ abfnrtv\\'\"\? ]
 @number       = $digit+
 
 -- identifiers
-@opalpha      = $alpha [ $alpha $digit ]*
+@opalpha      = $alpha [ $alpha $digit \' ]*
 @identalpha   = ((\_)? @opalpha)+ (\_)?
 
-@opsymbol     = $symbolstart $symbol*
+@opsymbol     = $symbol [ $symbol \' ]*
 @identsymbol  = ((\_)? @opsymbol)+ (\_)?
 
 @identifier   = @identalpha | @identsymbol
