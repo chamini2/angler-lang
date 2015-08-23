@@ -5,6 +5,7 @@ module Language.Angler.SrcLoc
         , Located(..)
         , locMove
         , srcLocSpan
+        , unlocate
         ) where
 
 import           Prelude hiding (span)
@@ -14,6 +15,7 @@ data SrcLoc
                         , srcLocLine    :: Int     -- line number, begins at 1
                         , srcLocCol     :: Int     -- column number, begins at 1
                         }
+  deriving Show
 
 locMove :: SrcLoc -> Char -> SrcLoc
 locMove (SrcLoc file line col) chr = case chr of
@@ -58,3 +60,6 @@ srcLocSpan (SrcLoc f l1 c1) (SrcLoc f' l2 c2) = case (compare f f', compare l1 l
 
 data Located e = Loc SrcSpan e
   deriving Show
+
+unlocate :: Located e -> e
+unlocate (Loc _ e) = e

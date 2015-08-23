@@ -2,14 +2,14 @@ module Language.Angler.Parser.Token where
 
 data Token
   = TkIdentifier String
-  | TkNewLine
+  -- | TkNewLine
 
-  -- Layout / Context
+  -- layouts
   | TkVLCurly
   | TkVRCurly
   | TkSemicolon
 
-  -- Reserved words
+  -- reserved words
   | TkWhere
   | TkForall
   | TkExists
@@ -17,6 +17,28 @@ data Token
   | TkOn
   | TkIs
 
-  -- Interpreter
+  -- reserved symbols
+  | TkArrow
+  | TkColon
+  | TkEquals
+
+  -- interpreter stuff
   | TkEOF
-  deriving Show
+
+instance Show Token where
+  show tk = case tk of
+         TkIdentifier str -> "«" ++ str ++ "»"
+         TkVLCurly        -> "{"
+         TkVRCurly        -> "}"
+         TkSemicolon      -> ";"
+         TkWhere          -> "where"
+         TkForall         -> "forall"
+         TkExists         -> "exists"
+         TkWith           -> "with"
+         TkOn             -> "on"
+         TkIs             -> "is"
+         TkArrow          -> "->"
+         TkColon          -> ":"
+         TkEquals         -> "="
+         TkEOF            -> "<eof>"
+
