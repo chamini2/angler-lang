@@ -2,6 +2,7 @@ module Language.Angler.Parser.Token where
 
 data Token
   = TkIdentifier String
+  | TkQualified  String
   -- | TkNewLine
 
   -- layouts
@@ -10,6 +11,9 @@ data Token
   | TkSemicolon
 
   -- reserved words
+  | TkExport
+  | TkImport
+  | TkAs
   | TkWhere
   | TkForall
   | TkExists
@@ -21,24 +25,41 @@ data Token
   | TkArrow
   | TkColon
   | TkEquals
+  | TkComma
+  | TkLParen
+  | TkRParen
+  | TkLCurly
+  | TkRCurly
+  | TkUnderscore
 
   -- interpreter stuff
   | TkEOF
 
 instance Show Token where
   show tk = case tk of
-         TkIdentifier str -> "«" ++ str ++ "»"
-         TkVLCurly        -> "{"
-         TkVRCurly        -> "}"
-         TkSemicolon      -> ";"
-         TkWhere          -> "where"
-         TkForall         -> "forall"
-         TkExists         -> "exists"
-         TkWith           -> "with"
-         TkOn             -> "on"
-         TkIs             -> "is"
-         TkArrow          -> "->"
-         TkColon          -> ":"
-         TkEquals         -> "="
-         TkEOF            -> "<eof>"
+        TkIdentifier str -> "«" ++ str ++ "»"
+        TkQualified  str -> "«" ++ str ++ "»"
+        -- TkNewLine        -> "<nl>"
+        TkVLCurly        -> "{^"
+        TkVRCurly        -> "^}"
+        TkSemicolon      -> ";"
+        TkExport         -> "export"
+        TkImport         -> "import"
+        TkAs             -> "as"
+        TkWhere          -> "where"
+        TkForall         -> "forall"
+        TkExists         -> "exists"
+        TkWith           -> "with"
+        TkOn             -> "on"
+        TkIs             -> "is"
+        TkArrow          -> "->"
+        TkColon          -> ":"
+        TkEquals         -> "="
+        TkComma          -> ","
+        TkLParen         -> "("
+        TkRParen         -> ")"
+        TkLCurly         -> "{"
+        TkRCurly         -> "}"
+        TkUnderscore     -> "_"
+        TkEOF            -> "<eof>"
 

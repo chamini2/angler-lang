@@ -8,15 +8,16 @@
 {
 {-# OPTIONS_GHC -funbox-strict-fields -w #-}
 
-module Language.Angler.Parser.Lexer (lexToken, runLP, runLexer, lexer) where
+module Language.Angler.Parser.Lexer (lexer, runLP, execLP, evalLP) where
 
 import           Language.Angler.Error
 import           Language.Angler.SrcLoc
 import           Language.Angler.Parser.Token
+import           Language.Angler.Parser.LP
 
-import           Control.Monad.Identity    (Identity(..))
-import           Control.Monad.Error       (ErrorT(..), throwError)
-import           Control.Monad.State       (StateT(..), get, gets, modify)
+import           Control.Monad.Identity    (Identity(runIdentity))
+import           Control.Monad.Error       (ErrorT(runErrorT))
+import           Control.Monad.State       (StateT(runStateT))
 import qualified Data.Bits                 ((.&.), shiftR)
 import           Data.Map.Strict           (Map)
 import qualified Data.Map.Strict           as Map (lookup, fromList)
@@ -38,7 +39,7 @@ $tab          = \t
 
 $digit        = 0-9
 $hexdigit     = [ $digit a-f A-F]
-$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \, \: \\ ]
+$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \, \: \\ \. ]
 $small        = a-z
 $large        = A-Z
 $alpha        = [ $small $large ]
@@ -70,9 +71,10 @@ angler :-
 $white_no_nl+   ;
 $tab            ;
 
--- comments
+-- comments and 'comment' state: every time a "{-" is seen, a 'comment' state
+-- is pushed, that way we have nested comments
 "--" .*         ;
-"{-"            { push comment }        -- nested comments
+"{-"            { push comment }                -- nested comments
 
 <comment> {
         "-}"    { pop }
@@ -80,19 +82,25 @@ $tab            ;
         \n      ;
 }
 
-
 -- 'bol' state: beginning of a line. Slurp up all the whitespace (including
 -- blank lines) until we find a non-whitespace character, then do layout
 -- processing.
 <bol> {
         \n      ;
+        ()      / { nextIsEOF } { pop }         -- don't produce a ';' at the end
         ()      { processLayout }
 }
 
 <0> {
         \n      { push bol }
         @identifier
-                { identifier }
+                { identifier TkIdentifier }
+        @qualified
+                { identifier TkQualified }
+        \(
+                { token TkLParen }
+        \)
+                { token TkRParen }
 }
 
 <layout> {
@@ -111,30 +119,38 @@ $tab            ;
 reserved :: Map String Token
 reserved = Map.fromList
         -- words
-        [ ("where" , TkWhere)
-        , ("forall", TkForall)
-        , ("exists", TkExists)
-        , ("with"  , TkWith)
-        , ("on"    , TkOn)
-        , ("is"    , TkIs)
+        [ ("export", TkExport    )
+        , ("import", TkImport    )
+        , ("as"    , TkAs        )
+        , ("where" , TkWhere     )
+        , ("forall", TkForall    )
+        , ("exists", TkExists    )
+        , ("with"  , TkWith      )
+        , ("on"    , TkOn        )
+        , ("is"    , TkIs        )
 
         -- symbols
-        , ("->"    , TkArrow)
-        , (":"    , TkColon)
-        , ("="    , TkEquals)
+        , ("->"    , TkArrow     )
+        , (":"     , TkColon     )
+        , ("="     , TkEquals    )
+        , (","     , TkComma     )
+        , (","     , TkComma     )
+        , ("("     , TkLParen    )
+        , (")"     , TkRParen    )
+        , ("{"     , TkLCurly    )
+        , ("}"     , TkRCurly    )
+        , ("_"     , TkUnderscore)
         ]
 
 ----------------------------------------
 -- Alex requirements
-
-type Byte = Word8
 
 -- from Alex's monad wrapper
 type AlexInput
   = ( SrcLoc                    -- current position
     , Char                      -- previous char
     , [Byte]                    -- pending bytes on current char
-    , String                    -- current input string
+    , String                    -- current buffer string
     )
 
 -- from Alex's monad wrapper
@@ -173,61 +189,8 @@ alexGetByte inp = case inp of
 ----------------------------------------
 -- Lexer monad
 
--- from GHC's Lexer
-data LayoutContext
-  = NoLayout            -- top level definitions
-  | Layout Int
-  deriving Show
-
--- from GHC's Lexer
-data LPState
-  = LPState
-        { lp_buffer     :: String
-        , lp_last_char  :: Char
-        , lp_loc        :: SrcLoc               -- current location (end of prev token + 1)
-        , lp_bytes      :: [Byte]
-        -- , lp_last_tk    :: Maybe Token
-        -- , lp_last_loc   :: SrcSpan              -- location of previous token
-        -- , lp_last_len   :: Int                  -- length of previous token
-        , lp_lex_state  :: [Int]                -- lexer states stack
-        , lp_context    :: [LayoutContext]      -- contexts stack
-        , lp_srcfiles   :: [String]
-        }
-
-type LP a = StateT LPState (ErrorT (Located Error) Identity) a
-
 type LPAction a = SrcSpan -> String -> Int -> LP a
 type Action = LPAction (Located Token)
-
-runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
-runLP input loc = runIdentity . runErrorT . flip runStateT initialLPState
-    where
-        initialLPState = LPState
-                { lp_buffer    = input
-                , lp_last_char = '\n'
-                , lp_loc       = loc
-                , lp_bytes     = []
-                -- , last_tk      = Nothing
-                -- , last_loc     = srcLocSpan loc loc
-                -- , last_len     = 0
-                , lp_lex_state = [bol, 0]               -- start in 'bol' state
-                , lp_context   = []
-                , lp_srcfiles  = []
-                }
-
-execLP :: String -> SrcLoc -> LP a -> Either (Located Error) LPState
-execLP input loc = check . runLP input loc
-    where
-        check r = case r of
-                Right (_, st) -> Right st
-                Left  l       -> Left l
-
-evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) a
-evalLP input loc = check . runLP input loc
-    where
-        check r = case r of
-                Right (a, _st) -> Right a
-                Left  l        -> Left l
 
 ----------------------------------------
 -- LPState's manipulation
@@ -243,36 +206,13 @@ setInput :: AlexInput -> LP ()
 setInput (loc,c,bs,inp) = modify $ \s ->
         s{ lp_loc = loc, lp_buffer = inp, lp_bytes = bs, lp_last_char = c }
 
-pushLexState :: Int -> LP ()
-pushLexState ls = modify $ \s -> let lss = lp_lex_state s
-                                 in s { lp_lex_state = ls : lss }
+----------------------------------------
+-- Lexer predicates
 
-peekLexState :: LP Int
-peekLexState = gets (head . lp_lex_state)
+type AlexPredicate = AlexAccPred ()
 
-popLexState :: LP Int
-popLexState = do
-        ls : lss <- gets lp_lex_state
-        modify $ \s -> s{ lp_lex_state = lss }
-        return ls
-
-pushContext :: LayoutContext -> LP ()
-pushContext lc = modify $ \s -> let lcs = lp_context s
-                                in s { lp_context = lc : lcs }
-
-popContext :: LP LayoutContext
-popContext = do
-        lc : lcs <- gets lp_context
-        modify $ \s -> s{ lp_context = lcs }
-        return lc
-
-getOffside :: SrcSpan -> LP Ordering
-getOffside span = do
-        stk <- gets lp_context
-        let indent = srcSpanStartCol span
-        return $ case stk of
-                Layout indent' : _ -> compare indent indent'
-                _                  -> GT
+nextIsEOF :: AlexPredicate
+nextIsEOF _ _ _ (_,_,_,b) = null b
 
 ----------------------------------------
 -- Lexer actions
@@ -290,11 +230,11 @@ pop :: Action
 pop _span _buf _len = popLexState >> lexToken
 
 -- from GHC's lexer
-identifier :: Action
-identifier span buf len = let str = take len buf in
+identifier :: (String -> Token) -> Action
+identifier idTk span buf len = let str = take len buf in
         case Map.lookup str reserved of
                 Just tk -> maybeLayout tk >> return (Loc span tk)
-                Nothing -> return (Loc span (TkIdentifier str))
+                Nothing -> return (Loc span (idTk str))
     where
         -- certain keywords put us in the "layout" state, where we might
         -- add an opening curly brace.
@@ -334,7 +274,7 @@ processLayout span _buf _len = do
                 LT -> -- trace "--------- }" $
                         popContext >> return (Loc span TkVRCurly)
                 -- inserting ';'
-                EQ -> -- trace "--------- ;" $
+                EQ -> do -- trace "--------- ;" $
                         popLexState >> return (Loc span TkSemicolon)
                 -- keep lexing as same in line
                 GT -> -- trace "--------- |" $
@@ -342,15 +282,40 @@ processLayout span _buf _len = do
 
 --------------------------------------------------------------------------------
 -- exposed functions
- 
-runLexer :: String -> Either (Located Error) [Located Token]
-runLexer input = evalLP input (SrcLoc "" 1 1) lexTokens
+
+runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
+runLP input loc = runIdentity . runErrorT . flip runStateT initialLPState . (\act -> return 2 >> act)
     where
-        lexTokens = do
-                tk <- lexToken
-                case tk of
-                        Loc _ TkEOF -> return [tk]
-                        _           -> lexTokens >>= return . ((:) tk)
+        initialLPState = LPState
+                { lp_buffer    = input
+                , lp_last_char = '\n'
+                , lp_loc       = loc
+                , lp_bytes     = []
+                -- , last_tk      = Nothing
+                -- , last_loc     = srcLocSpan loc loc
+                -- , last_len     = 0
+                , lp_lex_state = [layout, 0]            -- start in 'layout' state to
+                                                        -- introduce the global layout
+                , lp_context   = []
+                , lp_srcfiles  = []
+                }
+
+execLP :: String -> SrcLoc -> LP a -> Either (Located Error) LPState
+execLP input loc = check . runLP input loc
+    where
+        check r = case r of
+                Right (_, st) -> Right st
+                Left  l       -> Left l
+
+evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) a
+evalLP input loc = check . runLP input loc
+    where
+        check r = case r of
+                Right (a, _st) -> Right a
+                Left  l        -> Left l
+ 
+----------------------------------------
+-- lexer handling
 
 lexer :: (Located Token -> LP a) -> LP a
 lexer = (>>=) lexToken
@@ -379,4 +344,14 @@ lexToken = do
     --             AlexError (l,_,_,_) -> "AlexError at " ++ show l
     --             AlexSkip _ l -> "AlexSkip (" ++ show l ++ ") " ++ show (take l b)
     --             AlexToken (_,_,_,_) l _-> "AlexToken (" ++ show l ++ ") " ++ show (take l b)
+
+-- runLexer :: String -> Either (Located Error) [Located Token]
+-- runLexer input = evalLP input (SrcLoc "" 1 1) lexTokens
+--     where
+--         lexTokens = do
+--                 tk <- lexToken
+--                 case tk of
+--                         Loc _ TkEOF -> return [tk]
+--                         _           -> lexTokens >>= return . ((:) tk)
+
 }
