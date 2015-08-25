@@ -30,7 +30,7 @@ executable angler
   main-is:             Main.hs
 
   other-modules:       Language.Angler.Parser.Lexer
-                     -- , Language.Angler.Parser.Parser
+                     , Language.Angler.Parser.Parser
   build-tools:         alex, happy
 
   -- other-extensions:
