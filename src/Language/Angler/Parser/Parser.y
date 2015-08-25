@@ -13,6 +13,9 @@ import           Language.Angler.SrcLoc
 
 import           Control.Applicative          (Alternative(..))
 import           Data.Sequence                (Seq(..))
+import           Prelude                      hiding ()
+
+import           Debug.Trace                  (trace, traceShow)
 
 }
 
@@ -82,14 +85,14 @@ List1(r) :: { Seq r } -- { Alternative l => l a }
 
 ListSep0(r,sep) :: { Seq r } -- { Alternative l => l a }
     : {- empty -}       { empty }               -- like []
-    | ListSep1(r,sep)   { $1 }
+    | ListSep1(r,sep)   { $1    }
 
 ListSepEnd0(r,sep,e) :: { Seq r } -- { Alternative l => l a }
     : {- empty -}       { empty }               -- like []
-    | ListSep1(r,sep) e { $1 }
+    | ListSep1(r,sep) e { $1    }
 
 ListSep1(r,sep) :: { Seq r } -- { Alternative l => l a }
-    : r                 { pure $1 }             -- like [$1]
+    : r                 { pure $1        }      -- like [$1]
     | ListSep1(r,sep) sep r
                         { $1 <|> pure $3 }      -- like $1 ++ [$3]
 
@@ -113,7 +116,7 @@ Top :: { () }
                         { () }
 
     Export :: { () }
-        : 'export' ListSep1(QId, ',')
+        : 'export' '(' ListSep0(QId, ',') ')'
                             { () }
 
     Import :: { () }
@@ -124,7 +127,7 @@ Top :: { () }
                 : 'as' Id       { () }
 
             ImportSpecific :: { () }
-                : '(' ListSep1(Id, ',') ')'
+                : '(' ListSep0(Id, ',') ')'
                                 { () }
 
 -- declarations, definitions, behaviours, instantiation
@@ -141,27 +144,30 @@ Body :: { () }
                             { () }
 
     Definition :: { () }
-        : Id Maybe(Implicit) List0(Binding) '=' Expression
+        : Id Maybe(Implicit) List0(Argument) '=' Expression
                             { () }
-        | Id Maybe(Implicit) List0(Binding) '=' Expression 'where'
+        | Id Maybe(Implicit) List0(Argument) '=' Expression 'where'
             '{^' ListSep1(WhereBody,';') '^}'
                             { () }
 
     -- for general use in 'Body'
     Expression :: { () }
-        : Term { () }
-        | Expression Term { () }
+        : List1(Term)       { () }
 
     Term :: { () }
         : QId               { () }
+        | '->'              { () }
         | '(' Expression ')'
-                            { $2 }
-        -- | Expression '->' Expression
-        --                     { () }
+                            { () }
 
     WhereBody :: { () }
         : Declaration       { () }
         | Definition        { () }
+
+    Argument :: { () }
+        : Binding           { () }
+        | '(' Expression ')'        -- pattern matching
+                            { () }
 
     Binding :: { () }
         : Id                { () }

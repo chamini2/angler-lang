@@ -15,17 +15,17 @@ import           Language.Angler.SrcLoc
 import           Language.Angler.Parser.Token
 import           Language.Angler.Parser.LP
 
-import           Control.Monad.Identity    (Identity(runIdentity))
-import           Control.Monad.Error       (ErrorT(runErrorT))
-import           Control.Monad.State       (StateT(runStateT))
-import qualified Data.Bits                 ((.&.), shiftR)
-import           Data.Map.Strict           (Map)
-import qualified Data.Map.Strict           as Map (lookup, fromList)
-import           Data.Word                 (Word8)
+import           Control.Monad.Identity        (Identity(runIdentity))
+import           Control.Monad.Error           (ErrorT(runErrorT))
+import           Control.Monad.State           (StateT(runStateT))
+import qualified Data.Bits                     ((.&.), shiftR)
+import           Data.Map.Strict               (Map)
+import qualified Data.Map.Strict               as Map (lookup, fromList)
+import           Data.Word                     (Word8)
 
-import           Debug.Trace               (trace, traceShow)
+import           Debug.Trace                   (trace, traceShow)
 
-import           Prelude                   hiding (id, lookup, span)
+import           Prelude                       hiding (id, lookup, span)
 
 }
 
