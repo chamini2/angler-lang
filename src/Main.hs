@@ -20,10 +20,19 @@ main = do
         (input, filepath) <- case args of
                 f : _ -> readFile f  >>= \i -> return (i, f )
                 _     -> getContents >>= \i -> return (i, "")
+
+        putStrLn "lexer\n"
         case runLexer input of
-                Right ltks -> putStrLn . intercalate " " $ map (show . unlocate) ltks
+                Right ltks -> putStrLn . intercalate " " $ map (showNL . unlocate) ltks
+                    where
+                        showNL TkSemicolon = "\n"
+                        showNL TkVLCurly   = "{^\n"
+                        showNL TkVRCurly   = "\n^}"
+                        showNL tk          = show tk
+
                 Left  err  -> print err
 
+        putStrLn "\nparser\n"
         print (evalLP input (SrcLoc filepath 1 1) parseModule)
 
 runLexer :: String -> Either (Located Error) [Located Token]
