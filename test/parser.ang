@@ -1,0 +1,13 @@
+export function
+
+import Data.List
+import Data.Map         as Map
+import System.IO        as IO   (readFIle)
+import Control.Monad            ( Monad
+                                , _>>_          -- `,_>>_` is seen as a token
+                                , _>=>_
+                                )
+
+-- there's no `forall`s , `->` nor pattern-matching yet
+function : Vect (S Z) x -> Vect n x -> Vect (S n) x
+-- function (x::Nil) v = x :: v

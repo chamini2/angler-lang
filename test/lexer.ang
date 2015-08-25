@@ -1,0 +1,4 @@
+module Compose where
+
+_._ : a -> b -> b -> c -> a -> c
+_._ f g a = a
