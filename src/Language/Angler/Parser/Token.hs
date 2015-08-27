@@ -22,8 +22,9 @@ data Token
   | TkIs
 
   -- reserved symbols
-  | TkArrow
   | TkColon
+  | TkDot
+  | TkArrow
   | TkEquals
   | TkComma
   | TkLParen
@@ -52,8 +53,9 @@ instance Show Token where
         TkWith           -> "with"
         TkOn             -> "on"
         TkIs             -> "is"
-        TkArrow          -> "->"
+        TkDot            -> "."
         TkColon          -> ":"
+        TkArrow          -> "->"
         TkEquals         -> "="
         TkComma          -> ","
         TkLParen         -> "("

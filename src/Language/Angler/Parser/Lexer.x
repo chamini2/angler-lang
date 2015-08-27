@@ -69,7 +69,7 @@ angler :-
 
 -- all states: skip whitespace
 $white_no_nl+   ;
-$tab            ;
+$tab            ;               -- XXX: maybe give a warning
 
 -- comments and 'comment' state: every time a "{-" is seen, a 'comment' state
 -- is pushed, that way we have nested comments
@@ -101,6 +101,8 @@ $tab            ;
                 { token TkLParen }
         \)
                 { token TkRParen }
+        \_
+                { token TkUnderscore }
 }
 
 <layout> {
@@ -130,16 +132,17 @@ reserved = Map.fromList
         , ("is"    , TkIs        )
 
         -- symbols
-        , ("->"    , TkArrow     )
         , (":"     , TkColon     )
+        , ("."     , TkDot       )
+        , ("->"    , TkArrow     )
         , ("="     , TkEquals    )
         , (","     , TkComma     )
         , (","     , TkComma     )
-        , ("("     , TkLParen    )
-        , (")"     , TkRParen    )
+        -- , ("("     , TkLParen    )
+        -- , (")"     , TkRParen    )
         , ("{"     , TkLCurly    )
         , ("}"     , TkRCurly    )
-        , ("_"     , TkUnderscore)
+        -- , ("_"     , TkUnderscore)
         ]
 
 ----------------------------------------
