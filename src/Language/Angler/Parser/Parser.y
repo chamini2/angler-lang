@@ -52,8 +52,9 @@ import           Debug.Trace                  (trace, traceShow)
         'with'                  { Loc _ TkWith           }
         'on'                    { Loc _ TkOn             }
         'is'                    { Loc _ TkIs             }
-        '->'                    { Loc _ TkArrow          }
         ':'                     { Loc _ TkColon          }
+        '.'                     { Loc _ TkDot            }
+        '->'                    { Loc _ TkArrow          }
         '='                     { Loc _ TkEquals         }
         ','                     { Loc _ TkComma          }
         '('                     { Loc _ TkLParen         }
@@ -61,8 +62,6 @@ import           Debug.Trace                  (trace, traceShow)
         '{'                     { Loc _ TkLCurly         }
         '}'                     { Loc _ TkRCurly         }
         '_'                     { Loc _ TkUnderscore     }
-
-%right      '->'
 
 %%
 
@@ -73,7 +72,7 @@ Maybe(r) :: { Maybe r }
 
 MaybeEnd(r,e) :: { Maybe r }
     : {- empty -}       { Nothing }
-    | r e               { Just $1}
+    | r e               { Just $1 }
 
 List0(r) :: { Seq r } -- { Alternative l => l a }
     : {- empty -}       { empty }               -- like []
@@ -96,6 +95,7 @@ ListSep1(r,sep) :: { Seq r } -- { Alternative l => l a }
     | ListSep1(r,sep) sep r
                         { $1 <|> pure $3 }      -- like $1 ++ [$3]
 
+--------------------------------------------------------------------------------
 -- identifiers
 Id :: { () }
     : id                { () }
@@ -104,11 +104,13 @@ QId :: { () }
     : qid               { () }
     | Id                { () }
 
+----------------------------------------
 -- modules
 Module :: { () }
     : '{^' Top ListSep1(Body,';') '^}'
                         { () }
 
+----------------------------------------
 -- export and imports
 Top :: { () }
     : MaybeEnd(Export, ';')
@@ -130,55 +132,69 @@ Top :: { () }
                 : '(' ListSep0(Id, ',') ')'
                                 { () }
 
--- declarations, definitions, behaviours, instantiation
+----------------------------------------
+-- declarations, definitions
 Body :: { () }
-    : Declaration       { $1 }
-    | Definition        { $1 }
---    | Behaviour         { $1 }
+    : BodyStmt Maybe(Where)
+                        { () }
 
-    Declaration :: { () }
-        : Id ':' Expression
+    BodyStmt :: { () }
+        : Declaration       { $1 }
+        | Function          { $1 }
+
+        Declaration :: { () }
+            : Type Maybe(Constructors)
+                                { () }
+
+            Constructors :: { () }
+                : 'as' '{^' ListSep1(Type, ';') '^}'
+                                    { () }
+
+        Function :: { () }
+            : Id Maybe(Implicit) List0(Argument) '=' Expression
+                                { () }
+
+            Implicit :: { () }
+                : '{' ListSep1(ImplicitBinding,',') '}'
+                                    { () }
+
+                ImplicitBinding :: { () }
+                    : Id '=' Expression { () }
+
+            Argument :: { () }
+                : Binding           { () }
+                | '(' Expression ')'        -- pattern matching
+                                    { () }
+
+                Binding :: { () }
+                    : Id                { () }
+                    | '_'               { () }
+
+        -- for general use in 'Body'
+        Type :: { () }
+            : Id ':' Expression
+                                { () }
+
+        Expression :: { () }
+            : List1(Term)       { () }
+
+            Term :: { () }
+                : QId               { () }
+                | ':'               { () }
+                | '.'               { () }
+                | '->'              { () }
+                | '(' Expression ')'
+                                    { () }
+                | 'forall' ListSep1(Type,',') '.'
+                                    { () }
+                | 'exists' ListSep1(Type,',') '.'
+                                    { () }
+                | '(' 'with' Type ')'
+                                    { () }
+
+    Where :: { () }
+        : 'where' '{^' ListSep1(Body, ';') '^}'
                             { () }
-        | Id ':' Expression 'where'
-            '{^' ListSep1(WhereBody,';') '^}'
-                            { () }
-
-    Definition :: { () }
-        : Id Maybe(Implicit) List0(Argument) '=' Expression
-                            { () }
-        | Id Maybe(Implicit) List0(Argument) '=' Expression 'where'
-            '{^' ListSep1(WhereBody,';') '^}'
-                            { () }
-
-    -- for general use in 'Body'
-    Expression :: { () }
-        : List1(Term)       { () }
-
-    Term :: { () }
-        : QId               { () }
-        | '->'              { () }
-        | '(' Expression ')'
-                            { () }
-
-    WhereBody :: { () }
-        : Declaration       { () }
-        | Definition        { () }
-
-    Argument :: { () }
-        : Binding           { () }
-        | '(' Expression ')'        -- pattern matching
-                            { () }
-
-    Binding :: { () }
-        : Id                { () }
-        | '_'               { () }
-
-    Implicit :: { () }
-        : '{' ListSep1(ImplicitBinding,',') '}'
-                            { () }
-
-        ImplicitBinding :: { () }
-            : Id '=' Expression { () }
 
 {
 
