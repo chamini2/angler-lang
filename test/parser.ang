@@ -1,4 +1,4 @@
-export function
+export (function)
 
 import Data.List
 import Data.Map         as Map
@@ -11,3 +11,8 @@ import Control.Monad            ( Monad
 -- there's no `forall`s , `->` nor pattern-matching yet
 function : Vect (S Z) x -> Vect n x -> Vect (S n) x
 function (x::Nil) v = x :: v
+
+the : Type t -> t -> t
+the _ x = x
+        where
+g = x

@@ -25,10 +25,11 @@ main = do
         case runLexer input of
                 Right ltks -> putStrLn . intercalate " " $ map (showNL . unlocate) ltks
                     where
-                        showNL TkSemicolon = "\n"
-                        showNL TkVLCurly   = "{^\n"
-                        showNL TkVRCurly   = "\n^}"
-                        showNL tk          = show tk
+                        showNL tk = (case tk of
+                               TkSemicolon -> (++ "\n") . show
+                               TkVLCurly   -> (++ "\n") . show
+                               TkVRCurly   -> ("\n" ++) . show
+                               _           -> show) tk
 
                 Left  err  -> print err
 
