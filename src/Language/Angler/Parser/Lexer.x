@@ -244,6 +244,7 @@ identifier idTk span buf len = let str = take len buf in
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
                 TkWhere -> pushLexState layout
+                TkAs    -> pushLexState layout
                 _       -> return ()
 
 newLayoutContext :: Token -> Action
