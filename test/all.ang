@@ -1,0 +1,87 @@
+export (Nat, filter)
+
+import Data.List as L (List)
+
+_._ : forall (a:Type, b:Type, c:Type) . (b -> c) -> (a -> b) -> a -> c
+-- (f . g) x = f (g x)
+
+-- _$_ (infix 0) : forall a:Type, b:Type . (a -> b) -> a -> b
+
+_$_ : forall (a:Type, b:Type) . (a -> b) -> a -> b
+f $ x = f x
+
+-- _._ {a = Nat, c = Nat} id id
+
+-- open Char : Type
+-- a' : Char
+-- b' : Char
+-- c' : Char
+-- d' : Char
+-- e' : Char
+
+-- open Currency : Type
+-- USD : Currency
+-- EUR : Currency
+
+-- USD = EUR
+
+String : Type
+String = List Char
+
+closed Bool : Type as
+	True  : Bool
+	False : Bool
+
+{-closed Bool : Type as
+	closed True  : Bool as
+		Yes  : True
+		Yeap : True
+	closed False : Bool as
+		No : False
+		Nope : False
+	Bool = Char -}
+
+if_then_else_ : forall (t:Type) . Bool -> t -> t -> t
+if_then_else_ True yes _ = yes
+if_then_else_ False _ no = no
+
+closed Nat : Type as
+	Z : Nat
+	S : Nat -> Nat
+
+closed Vect : forall (t:Type) . Nat -> t -> Type as
+	Nil  : Vect Z t
+	_::_ : forall (n : Nat) . t -> Vect n t -> List (S n) t
+
+_+_ : t -> t -> t
+	where t = Nat
+-- t no está disponible aquí
+(Z)   + m = m
+(S n) + m = S (n + m)
+_+_ (Z)   m = m
+_+_ (S n) m = S (n + m)
+
+id : forall (t:Type) . t -> t
+the : with (t:Type) -> t -> t
+
+id x = x
+the t x = id { t = t } x
+
+filter : forall (t:Type) . (t -> Bool) -> L.List t -> L.List t
+filter g (x :: xs) {t = tpe} =
+	(if g x
+		then _::_ x
+		else the (L.List tpe)) filter g xs
+filter _ (Nil) = Nil
+
+filterVect : forall (t:Type, n:Nat) . (t -> Bool) -> Vect n t -> exists (m:Nat ; Vect m t)
+filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
+filterVect _ (Nil    ) {n = Z    } = Nil
+
+-- map : forall
+
+zeroes : L.List Nat -> L.List Nat
+zeroes = filter \ Z -> True
+
+ones : L.List Nat -> L.List Nat
+ones = map S . zeroes
