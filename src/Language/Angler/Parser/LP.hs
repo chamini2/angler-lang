@@ -76,7 +76,7 @@ popContext = do
 getOffside :: SrcSpan -> LP Ordering
 getOffside span = do
         stk <- gets lp_context
-        let indent = srcSpanStartCol span
+        let indent = srcSpanSCol span
         return $ case stk of
                 Layout indent' : _ -> compare indent indent'
                 _                  -> GT
