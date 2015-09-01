@@ -34,6 +34,6 @@ executable angler
   build-tools:         alex, happy
 
   -- other-extensions:
-  build-depends:       base >=4.7 && <4.8, array, containers, mtl
+  build-depends:       base >=4.7 && <4.8, array, containers, mtl, directory
   default-language:    Haskell2010
   ghc-options:         -Wall -Werror
