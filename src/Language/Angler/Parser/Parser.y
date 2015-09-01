@@ -6,6 +6,7 @@ module Language.Angler.Parser.Parser
 
 import           Language.Angler.Parser.Lexer (lexer)
 
+import           Language.Angler.AST
 import           Language.Angler.Error
 import           Language.Angler.Parser.LP
 import           Language.Angler.Parser.Token
@@ -24,6 +25,11 @@ import           Debug.Trace                  (trace, traceShow)
 %tokentype { (Located Token) }
 %error { parseError }
 
+
+-- lambda expressions in the 'Term' rule currently generates 9 shift/reduce
+-- conflicts, which are resolved as shift
+-- %expect 9
+
 -- Exported parsers
 %name parseModule Module -- where
 -- %name parseImport importdecl
@@ -37,24 +43,35 @@ import           Debug.Trace                  (trace, traceShow)
 -- %name parseType ctype
 
 %token
-        id                      { Loc _ (TkIdentifier _) }
-        qid                     { Loc _ (TkQualified _)  }
-        -- nl                      { Loc _ TkNewLine        }
+        ident                   { Loc _ (TkIdentifier _) }
+        -- imprt                   { Loc _ (TkImportPath _) }
+        qualf                   { Loc _ (TkQualified  _) }
+
+        int                     { Loc _ (TkInteger _)    }
+        chr                     { Loc _ (TkChar    _)    }
+        str                     { Loc _ (TkString  _)    }
+
         '{^'                    { Loc _ TkVLCurly        }
         '^}'                    { Loc _ TkVRCurly        }
-        ';'                     { Loc _ TkSemicolon      }
+        '^;'                    { Loc _ TkVSemicolon     }
+
         'export'                { Loc _ TkExport         }
         'import'                { Loc _ TkImport         }
         'as'                    { Loc _ TkAs             }
+        'closed'                { Loc _ TkClosed         }
+        'open'                  { Loc _ TkOpen           }
         'where'                 { Loc _ TkWhere          }
         'forall'                { Loc _ TkForall         }
         'exists'                { Loc _ TkExists         }
         'with'                  { Loc _ TkWith           }
-        'on'                    { Loc _ TkOn             }
-        'is'                    { Loc _ TkIs             }
+        -- 'on'                    { Loc _ TkOn             }
+        -- 'is'                    { Loc _ TkIs             }
+
         ':'                     { Loc _ TkColon          }
+        ';'                     { Loc _ TkSemicolon      }
         '.'                     { Loc _ TkDot            }
         '->'                    { Loc _ TkArrow          }
+        '\ '                    { Loc _ TkBackslash      }
         '='                     { Loc _ TkEquals         }
         ','                     { Loc _ TkComma          }
         '('                     { Loc _ TkLParen         }
@@ -97,61 +114,77 @@ ListSep1(r,sep) :: { Seq r } -- { Alternative l => l a }
 
 --------------------------------------------------------------------------------
 -- identifiers
-Id :: { () }
-    : id                { () }
+Id :: { Identifier }
+    : ident             { let Loc l (TkIdentifier str) = $1 in Loc l str }
 
-QId :: { () }
-    : qid               { () }
-    | Id                { () }
+QId :: { Qualified }
+    : qualf             { let Loc l (TkQualified str) = $1 in Loc l str }
+    | Id                { $1 }
+    -- | ImportPath        { $1 }
+
+-- ImportPath :: { Qualified }
+--     : imprt             { let Loc l (TkImportPath str) = $1 in Loc l str }
 
 ----------------------------------------
 -- modules
-Module :: { () }
-    : '{^' Top ListSep1(Body,';') '^}'
-                        { () }
+Module :: { Module }
+    : '{^' Top ListSep1(Body,'^;') '^}'
+                        { Module (fst $2) (snd $2) $3 }
 
 ----------------------------------------
 -- export and imports
-Top :: { () }
-    : MaybeEnd(Export, ';')
-      ListSepEnd0(Import, ';', ';')
-                        { () }
+Top :: { (Maybe (Seq Identifier), Seq (Located Import)) }
+    : MaybeEnd(Export, '^;')
+      ListSepEnd0(Import, '^;', '^;')
+                        { ($1, $2) }
 
-    Export :: { () }
-        : 'export' '(' ListSep0(QId, ',') ')'
-                            { () }
+    Export :: { Seq Identifier }
+        : 'export' '(' ListSep0(Id, ',') ')'
+                            { $3 }
 
-    Import :: { () }
-        : 'import' QId Maybe(ImportAs) Maybe(ImportSpecific)
-                            { () }
+    Import :: { Located Import }
+        : 'import' QId ImportOptions
+                            { Loc (srcLocatedSpan $1 $2)
+                                (Import (unlocate $2) (fst $3) (snd $3)) }
 
-            ImportAs :: { () }
-                : 'as' Id       { () }
+            ImportOptions :: { (String, Maybe (Seq Identifier)) }
+                : Maybe(ImportSpecific)
+                                { ("", $1) }
+                | 'as' '{^' QId Maybe(ImportSpecific) '^}'  -- 'as' produces a
+                                { (unlocate $3, $4) }       -- layout because is
+                                                            -- used in datas
 
-            ImportSpecific :: { () }
-                : '(' ListSep0(Id, ',') ')'
-                                { () }
+                ImportSpecific :: { () }
+                    : '(' ListSep0(Id, ',') ')'
+                                    { () }
+
+    -- if we stop producing a layout after 'as'
+    -- Import : 'import' QId Maybe(ImportAs) Maybe(ImportSpecific) {}
+    --         ImportAs : 'as' QId {}
+    --         ImportSpecific : '(' ListSep0(Id, ',') ')' {}
 
 ----------------------------------------
 -- declarations, definitions
-Body :: { () }
-    : BodyStmt Maybe(Where)
-                        { () }
+-- Body :: { () }
+    -- : BodyStmt
+                        -- { () }
 
-    BodyStmt :: { () }
+    Body :: { () }
         : Declaration       { $1 }
         | Function          { $1 }
 
         Declaration :: { () }
-            : Type Maybe(Constructors)
+            :          Type { () }
+            | 'closed' Type 'as'
+                '{^' ListSep1(Type, '^;') '^}'
+                            { () }
+
+        Type :: { () }
+            : Id ':' Expression Maybe(Where)
                                 { () }
 
-            Constructors :: { () }
-                : 'as' '{^' ListSep1(Type, ';') '^}'
-                                    { () }
-
         Function :: { () }
-            : Id Maybe(Implicit) List0(Argument) '=' Expression
+            : List1(Argument) Maybe(Implicit) '=' Expression Maybe(Where)
                                 { () }
 
             Implicit :: { () }
@@ -171,29 +204,28 @@ Body :: { () }
                     | '_'               { () }
 
         -- for general use in 'Body'
-        Type :: { () }
-            : Id ':' Expression
-                                { () }
-
         Expression :: { () }
             : List1(Term)       { () }
 
             Term :: { () }
                 : QId               { () }
-                | ':'               { () }
                 | '.'               { () }
+                | '='               { () }
                 | '->'              { () }
+                | '\ ' List1(Argument) '->'
+                                    { () }
                 | '(' Expression ')'
                                     { () }
-                | 'forall' ListSep1(Type,',') '.'
+                | 'forall' '(' ListSep1(Type,',') ')' '.'
                                     { () }
-                | 'exists' ListSep1(Type,',') '.'
+                | 'exists' '(' Type ';' Expression ')'
                                     { () }
-                | '(' 'with' Type ')'
+                | 'with' '(' Type ')'
                                     { () }
+                | Implicit          { () }
 
     Where :: { () }
-        : 'where' '{^' ListSep1(Body, ';') '^}'
+        : 'where' '{^' ListSep1(Body, '^;') '^}'
                             { () }
 
 {
