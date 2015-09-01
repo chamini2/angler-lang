@@ -1,30 +1,43 @@
 module Language.Angler.Parser.Token where
 
 data Token
+  -- identifiers
+  -- = TkTypeId     String
+  -- | TkFunctionId String
   = TkIdentifier String
+  -- | TkImportPath FilePath
   | TkQualified  String
-  -- | TkNewLine
+
+  -- literals
+  | TkInteger Int
+  | TkChar    Char
+  | TkString  String
 
   -- layouts
   | TkVLCurly
   | TkVRCurly
-  | TkSemicolon
+  | TkVSemicolon
 
   -- reserved words
   | TkExport
   | TkImport
   | TkAs
+  | TkClosed
+  | TkOpen
   | TkWhere
   | TkForall
   | TkExists
   | TkWith
-  | TkOn
-  | TkIs
+  -- | TkBehaviour
+  -- | TkOn
+  -- | TkIs
 
   -- reserved symbols
   | TkColon
+  | TkSemicolon
   | TkDot
   | TkArrow
+  | TkBackslash
   | TkEquals
   | TkComma
   | TkLParen
@@ -38,24 +51,37 @@ data Token
 
 instance Show Token where
   show tk = case tk of
-        TkIdentifier str -> "«" ++ str ++ "»"
-        TkQualified  str -> "«" ++ str ++ "»"
-        -- TkNewLine        -> "<nl>"
+        -- TkTypeId     str -> showId str
+        -- TkFunctionId str -> showId str
+        TkIdentifier str -> showId str
+        -- TkImportPath str -> showId str
+        TkQualified  str -> showId str
+
+        TkInteger int    -> show int
+        TkChar    chr    -> show chr
+        TkString  str    -> show str
+
         TkVLCurly        -> "{^"
         TkVRCurly        -> "^}"
-        TkSemicolon      -> ";"
+        TkVSemicolon     -> "^;"
+
         TkExport         -> "export"
         TkImport         -> "import"
         TkAs             -> "as"
+        TkClosed         -> "closed"
+        TkOpen           -> "open"
         TkWhere          -> "where"
         TkForall         -> "forall"
         TkExists         -> "exists"
         TkWith           -> "with"
-        TkOn             -> "on"
-        TkIs             -> "is"
-        TkDot            -> "."
+        -- TkOn             -> "on"
+        -- TkIs             -> "is"
+
         TkColon          -> ":"
+        TkSemicolon      -> ";"
+        TkDot            -> "."
         TkArrow          -> "->"
+        TkBackslash      -> "\\"
         TkEquals         -> "="
         TkComma          -> ","
         TkLParen         -> "("
@@ -63,5 +89,8 @@ instance Show Token where
         TkLCurly         -> "{"
         TkRCurly         -> "}"
         TkUnderscore     -> "_"
+
         TkEOF            -> "<eof>"
+    where
+        showId str = "«" ++ str ++ "»"
 
