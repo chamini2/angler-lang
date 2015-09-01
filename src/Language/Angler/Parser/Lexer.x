@@ -8,13 +8,14 @@
 {
 {-# OPTIONS_GHC -funbox-strict-fields -w #-}
 
-module Language.Angler.Parser.Lexer (lexer, runLP, execLP, evalLP) where
+module Language.Angler.Parser.Lexer (lexer, lexTokens, runLP, execLP, evalLP) where
 
 import           Language.Angler.Error
 import           Language.Angler.SrcLoc
 import           Language.Angler.Parser.Token
 import           Language.Angler.Parser.LP
 
+import           Control.Monad                 (liftM)
 import           Control.Monad.Identity        (Identity(runIdentity))
 import           Control.Monad.Error           (ErrorT(runErrorT))
 import           Control.Monad.State           (StateT(runStateT))
@@ -35,41 +36,49 @@ import           Prelude                       hiding (id, lookup, span)
 $nl           = [\n \r \f]
 $whitechar    = [$nl \v \ ]
 $white_no_nl  = $whitechar # \n
-$tab          = \t
 
-$digit        = 0-9
-$hexdigit     = [ $digit a-f A-F]
-$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \, \: \\ \. ]
-$small        = a-z
-$large        = A-Z
+$digit        = 0 - 9
+$hexdigit     = [ $digit a - f A - F ]
+$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \: \\ \. ]
+$small        = a - z
+$large        = A - Z
 $alpha        = [ $small $large ]
 
-$escape_chars = [ abfnrtv\\'\"\? ]
+$escape_chars = [ a b f n r t v \\ \' \" ]                              -- "
 
 ----------------------------------------
 -- regex
 
-@number       = $digit+
+@int          = $digit+
+@hex          = 0 x $hexdigit+
+@float        = @int \. @int
+
+@char         = \' ($printable # [\\ \'] | \\ $escape_chars)  \'
+@string       = \" ($printable # [\\ \"] | \\ $escape_chars)* \"        -- "
 
 -- identifiers
 @opalpha      = $alpha [ $alpha $digit \' ]*
-@identalpha   = ((\_)? @opalpha)+ (\_)?
+@idalpha      = ((\_)? @opalpha)+ (\_)?
 
 @opsymbol     = $symbol [ $symbol \' ]*
-@identsymbol  = ((\_)? @opsymbol)+ (\_)?
+@idsymbol     = ((\_)? @opsymbol)+ (\_)?
 
-@identifier   = @identalpha | @identsymbol
+@op           = @opalpha | @opsymbol
+                -- with '_'            | without '_'
+@ident        = (\_)? (@op \_)+ (@op)? | @op
+-- @ident        = @idalpha | @idsymbol
 
--- for namespaces (modules)
-@namespace    = (@identalpha \.)*
-@qualified    = @namespace @identifier
+-- for modules (paths)
+@path         = (@idalpha \.)*
+-- @imprt        = @path @idalpha
+@qualf        = @path @ident
 --------------------------------------------------------------------------------
 
 angler :-
 
 -- all states: skip whitespace
 $white_no_nl+   ;
-$tab            ;               -- XXX: maybe give a warning
+\t              ;               -- XXX: maybe give a warning
 
 -- comments and 'comment' state: every time a "{-" is seen, a 'comment' state
 -- is pushed, that way we have nested comments
@@ -93,16 +102,23 @@ $tab            ;               -- XXX: maybe give a warning
 
 <0> {
         \n      { push bol }
-        @identifier
-                { identifier TkIdentifier }
-        @qualified
-                { identifier TkQualified }
-        \(
-                { token TkLParen }
-        \)
-                { token TkRParen }
-        \_
-                { token TkUnderscore }
+        @ident  { identifier TkIdentifier }
+        -- @imprt  { identifier TkImportPath }
+        @qualf  { identifier TkQualified  }
+
+        @int    { tokenRead (TkInteger . read) }
+        @char   { tokenRead (TkChar    . read) }
+        @string { tokenRead (TkString  . read) }
+
+        \;      { token TkSemicolon }
+        \,      { token TkComma     }
+
+        \(      { token TkLParen }
+        \)      { token TkRParen }
+        \{      { token TkLCurly }
+        \}      { token TkRCurly }
+
+        \_      { token TkUnderscore }
 }
 
 <layout> {
@@ -121,28 +137,32 @@ $tab            ;               -- XXX: maybe give a warning
 reserved :: Map String Token
 reserved = Map.fromList
         -- words
-        [ ("export", TkExport    )
-        , ("import", TkImport    )
-        , ("as"    , TkAs        )
-        , ("where" , TkWhere     )
-        , ("forall", TkForall    )
-        , ("exists", TkExists    )
-        , ("with"  , TkWith      )
-        , ("on"    , TkOn        )
-        , ("is"    , TkIs        )
+        [ ("export"   , TkExport    )
+        , ("import"   , TkImport    )
+        , ("as"       , TkAs        )
+        , ("closed"   , TkClosed    )
+        , ("open"     , TkOpen      )
+        , ("where"    , TkWhere     )
+        , ("forall"   , TkForall    )
+        , ("exists"   , TkExists    )
+        , ("with"     , TkWith      )
+        -- , ("behaviour", TkBehaviour )
+        -- , ("on"    , TkOn        )
+        -- , ("is"    , TkIs        )
 
         -- symbols
-        , (":"     , TkColon     )
-        , ("."     , TkDot       )
-        , ("->"    , TkArrow     )
-        , ("="     , TkEquals    )
-        , (","     , TkComma     )
-        , (","     , TkComma     )
-        -- , ("("     , TkLParen    )
-        -- , (")"     , TkRParen    )
-        , ("{"     , TkLCurly    )
-        , ("}"     , TkRCurly    )
-        -- , ("_"     , TkUnderscore)
+        , (":"        , TkColon     )
+        -- , (";"        , TkSemicolon )
+        , ("."        , TkDot       )
+        , ("->"       , TkArrow     )
+        , ("\\"       , TkBackslash )
+        , ("="        , TkEquals    )
+        -- , (","        , TkComma     )
+        -- , ("("        , TkLParen    )
+        -- , (")"        , TkRParen    )
+        -- , ("{"        , TkLCurly    )
+        -- , ("}"        , TkRCurly    )
+        -- , ("_"        , TkUnderscore)
         ]
 
 ----------------------------------------
@@ -226,6 +246,10 @@ token tk span _buf _len = return (Loc span tk)
 layoutToken :: Token -> Action
 layoutToken tk span _buf _len = pushLexState layout >> return (Loc span tk)
 
+tokenRead :: (String -> Token) -> Action
+tokenRead fnTk span buf len = let tk = fnTk (take len buf)
+                              in return (Loc span tk)
+
 push :: Int -> Action
 push ls _span _buf _len = pushLexState ls >> lexToken
 
@@ -244,7 +268,7 @@ identifier idTk span buf len = let str = take len buf in
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
                 TkWhere -> pushLexState layout
-                TkAs    -> pushLexState layout
+                TkAs    -> pushLexState layout  -- for closed types, not imports
                 _       -> return ()
 
 newLayoutContext :: Token -> Action
@@ -279,7 +303,7 @@ processLayout span _buf _len = do
                         popContext >> return (Loc span TkVRCurly)
                 -- inserting ';'
                 EQ -> do -- trace "--------- ;" $
-                        popLexState >> return (Loc span TkSemicolon)
+                        popLexState >> return (Loc span TkVSemicolon)
                 -- keep lexing as same in line
                 GT -> -- trace "--------- |" $
                         popLexState >> lexToken
@@ -288,7 +312,7 @@ processLayout span _buf _len = do
 -- exposed functions
 
 runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
-runLP input loc = runIdentity . runErrorT . flip runStateT initialLPState . (\act -> return 2 >> act)
+runLP input loc = runIdentity . runErrorT . flip runStateT initialLPState
     where
         initialLPState = LPState
                 { lp_buffer    = input
@@ -339,7 +363,7 @@ lexToken = do
                                 _ : _  -> popContext >> return (Loc (srcLocSpan l l) TkVRCurly)
                                 _      -> return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
-                        throwError (Loc (srcLocSpan l l') (LexError (LErrUnexpectedCharacter c')))
+                        throwError (Loc (srcLocSpan l l) (LexError (LErrUnexpectedCharacter c')))
                 AlexSkip  inp' _len -> setInput inp' >> lexToken
                 AlexToken inp'@(l',_,_,_) len act -> setInput inp' >> act (srcLocSpan l l') b len
     -- where
@@ -349,13 +373,11 @@ lexToken = do
     --             AlexSkip _ l -> "AlexSkip (" ++ show l ++ ") " ++ show (take l b)
     --             AlexToken (_,_,_,_) l _-> "AlexToken (" ++ show l ++ ") " ++ show (take l b)
 
--- runLexer :: String -> Either (Located Error) [Located Token]
--- runLexer input = evalLP input (SrcLoc "" 1 1) lexTokens
---     where
---         lexTokens = do
---                 tk <- lexToken
---                 case tk of
---                         Loc _ TkEOF -> return [tk]
---                         _           -> lexTokens >>= return . ((:) tk)
+lexTokens :: LP [Located Token]
+lexTokens = do
+        ltk <- lexToken
+        case unlocate ltk of
+                TkEOF -> return [ltk]
+                _     -> lexTokens >>= \ltks -> return (ltk : ltks)
 
 }
