@@ -17,7 +17,7 @@ import           Language.Angler.Parser.LP
 
 import           Control.Monad                 (liftM)
 import           Control.Monad.Identity        (Identity(runIdentity))
-import           Control.Monad.Error           (ErrorT(runErrorT))
+import           Control.Monad.Except          (runExceptT)
 import           Control.Monad.State           (StateT(runStateT))
 import qualified Data.Bits                     ((.&.), shiftR)
 import           Data.Map.Strict               (Map)
@@ -106,9 +106,9 @@ $white_no_nl+   ;
         -- @imprt  { identifier TkImportPath }
         @qualf  { identifier TkQualified  }
 
-        @int    { tokenRead (TkInteger . read) }
-        @char   { tokenRead (TkChar    . read) }
-        @string { tokenRead (TkString  . read) }
+        @int    { tokenStore (TkInteger . read) }
+        @char   { tokenStore (TkChar    . read) }
+        @string { tokenStore (TkString  . read) }
 
         \;      { token TkSemicolon }
         \,      { token TkComma     }
@@ -246,8 +246,8 @@ token tk span _buf _len = return (Loc span tk)
 layoutToken :: Token -> Action
 layoutToken tk span _buf _len = pushLexState layout >> return (Loc span tk)
 
-tokenRead :: (String -> Token) -> Action
-tokenRead fnTk span buf len = let tk = fnTk (take len buf)
+tokenStore :: (String -> Token) -> Action
+tokenStore fnTk span buf len = let tk = fnTk (take len buf)
                               in return (Loc span tk)
 
 push :: Int -> Action
@@ -312,9 +312,9 @@ processLayout span _buf _len = do
 -- exposed functions
 
 runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
-runLP input loc = runIdentity . runErrorT . flip runStateT initialLPState
+runLP input loc = runIdentity . runExceptT . flip runStateT initialST
     where
-        initialLPState = LPState
+        initialST = LPState
                 { lp_buffer    = input
                 , lp_last_char = '\n'
                 , lp_loc       = loc
@@ -375,9 +375,10 @@ lexToken = do
 
 lexTokens :: LP [Located Token]
 lexTokens = do
-        ltk <- lexToken
-        case unlocate ltk of
-                TkEOF -> return [ltk]
-                _     -> lexTokens >>= \ltks -> return (ltk : ltks)
+        tk  <- lexToken
+        tks <- case unlocate tk of
+                TkEOF -> return []
+                _     -> lexTokens
+        return (tk:tks)
 
 }

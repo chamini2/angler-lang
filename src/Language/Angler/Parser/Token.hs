@@ -2,16 +2,20 @@ module Language.Angler.Parser.Token where
 
 data Token
   -- identifiers
-  -- = TkTypeId     String
-  -- | TkFunctionId String
-  = TkIdentifier String
-  -- | TkImportPath FilePath
-  | TkQualified  String
+  -- = TkTypeId            String
+  -- | TkFunctionId        String
+  = TkIdentifier        String
+  -- | TkImportPath        FilePath
+  | TkQualified         String
+
+  -- comments
+  | TkLineComment       String
+  | TkBlockComment      String
 
   -- literals
-  | TkInteger Int
-  | TkChar    Char
-  | TkString  String
+  | TkInteger           Int
+  | TkChar              Char
+  | TkString            String
 
   -- layouts
   | TkVLCurly
@@ -51,46 +55,49 @@ data Token
 
 instance Show Token where
   show tk = case tk of
-        -- TkTypeId     str -> showId str
-        -- TkFunctionId str -> showId str
-        TkIdentifier str -> showId str
-        -- TkImportPath str -> showId str
-        TkQualified  str -> showId str
+        -- TkTypeId     str   -> showId str
+        -- TkFunctionId str   -> showId str
+        TkIdentifier str   -> showId str
+        -- TkImportPath str   -> showId str
+        TkQualified  str   -> showId str
 
-        TkInteger int    -> show int
-        TkChar    chr    -> show chr
-        TkString  str    -> show str
+        TkLineComment str  -> "--" ++ str
+        TkBlockComment str -> "{-" ++ str ++ "-}"
 
-        TkVLCurly        -> "{^"
-        TkVRCurly        -> "^}"
-        TkVSemicolon     -> "^;"
+        TkInteger int      -> show int
+        TkChar    chr      -> show chr
+        TkString  str      -> show str
 
-        TkExport         -> "export"
-        TkImport         -> "import"
-        TkAs             -> "as"
-        TkClosed         -> "closed"
-        TkOpen           -> "open"
-        TkWhere          -> "where"
-        TkForall         -> "forall"
-        TkExists         -> "exists"
-        TkWith           -> "with"
-        -- TkOn             -> "on"
-        -- TkIs             -> "is"
+        TkVLCurly          -> "{^"
+        TkVRCurly          -> "^}"
+        TkVSemicolon       -> "^;"
 
-        TkColon          -> ":"
-        TkSemicolon      -> ";"
-        TkDot            -> "."
-        TkArrow          -> "->"
-        TkBackslash      -> "\\"
-        TkEquals         -> "="
-        TkComma          -> ","
-        TkLParen         -> "("
-        TkRParen         -> ")"
-        TkLCurly         -> "{"
-        TkRCurly         -> "}"
-        TkUnderscore     -> "_"
+        TkExport           -> "export"
+        TkImport           -> "import"
+        TkAs               -> "as"
+        TkClosed           -> "closed"
+        TkOpen             -> "open"
+        TkWhere            -> "where"
+        TkForall           -> "forall"
+        TkExists           -> "exists"
+        TkWith             -> "with"
+        -- TkOn               -> "on"
+        -- TkIs               -> "is"
 
-        TkEOF            -> "<eof>"
+        TkColon            -> ":"
+        TkSemicolon        -> ";"
+        TkDot              -> "."
+        TkArrow            -> "->"
+        TkBackslash        -> "\\"
+        TkEquals           -> "="
+        TkComma            -> ","
+        TkLParen           -> "("
+        TkRParen           -> ")"
+        TkLCurly           -> "{"
+        TkRCurly           -> "}"
+        TkUnderscore       -> "_"
+
+        TkEOF                -> "<eof>"
     where
         showId str = "«" ++ str ++ "»"
 

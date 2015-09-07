@@ -15,14 +15,14 @@ import           Language.Angler.SrcLoc
 import           Language.Angler.Error
 
 import           Control.Monad.Identity (Identity(..))
-import           Control.Monad.Error    (ErrorT(..), throwError)
+import           Control.Monad.Except   (ExceptT(..), throwError)
 import           Control.Monad.State    (StateT(..), get, gets, modify, put)
 import           Data.Word              (Word8)
 
 import           Prelude                hiding (span)
 
 -- LexerParser Monad
-type LP a = StateT LPState (ErrorT (Located Error) Identity) a
+type LP a = StateT LPState (ExceptT (Located Error) Identity) a
 
 type Byte = Word8
 

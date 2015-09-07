@@ -15,6 +15,7 @@ module Language.Angler.SrcLoc
 
         , Located(..)
         , unlocate
+        , location
         , srcLocatedSpan
         ) where
 
@@ -115,6 +116,9 @@ data Located e = Loc SrcSpan e
 
 unlocate :: Located e -> e
 unlocate (Loc _ e) = e
+
+location :: Located e -> SrcSpan
+location (Loc l _) = l
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan
 srcLocatedSpan (Loc s _) (Loc e _) = srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
