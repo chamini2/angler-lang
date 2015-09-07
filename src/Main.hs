@@ -1,5 +1,6 @@
 module Main where
 
+import           Language.Angler.AST           (prettyShow)
 import           Language.Angler.Parser.Lexer  (evalLP)
 import           Language.Angler.Parser.Parser (parseModule)
 import           Language.Angler.SrcLoc        (SrcLoc(..))
@@ -10,7 +11,8 @@ import           System.Console.GetOpt         (ArgDescr (..), ArgOrder (..),
 import           System.Environment            (getArgs)
 import           System.Exit                   (exitWith, ExitCode(..))
 import           System.Directory              (doesDirectoryExist)
--- import           System.IO                     (openFile, stdin, IOMode(ReadMode))
+-- import           System.IO                     (Handle, IOMode(..), openFile, stdin, stdout, stderr)
+import           System.IO
 
 
 -- import           Language.Angler.Error
@@ -31,17 +33,20 @@ main = do
 
         options <- foldl (>>=) (return initialOptions) optActions
 
-        (input, filepath) <- case nonOptions of
-                f : _ -> readFile f  >>= \i -> return (i, f )
-                []    -> getContents >>= \i -> return (i, "")
+        (handle, filepath) <- case nonOptions of
+                f : _ -> openFile f ReadMode >>= \h -> return (h, f)
+                []    -> return (stdin, "<stdin>")
 
         print options
 
-        angler options input filepath
+        angler options handle filepath
 
-angler :: Options -> String -> FilePath -> IO ()
-angler options input filepath = do
+angler :: Options -> Handle -> FilePath -> IO ()
+angler options handle filepath = do
         putStrLn $ "Checking module (" ++ filepath ++ ")"
+
+        input <- hGetContents handle
+        let evalLP' = evalLP input (SrcLoc filepath 1 1)
 
         when (opt_tokens options) $ do
                 putStrLn "\n\n***** lexer\n"
@@ -59,13 +64,17 @@ angler options input filepath = do
         when (opt_ast options) $ do
                 putStrLn "\n\n***** parser\n"
                 case evalLP' parseModule of
-                        Right lmod -> print lmod
+                        Right lmod -> putStrLn (prettyShow lmod)
                         Left  err  -> print err
+
+        -- symbols <- readModule options modrelpath
     where
-        -- evalLP' :: LP a -> Either (Located Error) a
-        evalLP' = evalLP input (SrcLoc filepath 1 1)
 
 
+-- readModule :: Options -> FilePath -> IO a
+-- readModule options modrelpath = do
+--         let paths = opt_paths options
+--         msum ()
 
 
 --------------------------------------------------------------------------------

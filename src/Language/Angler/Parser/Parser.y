@@ -14,7 +14,7 @@ import           Language.Angler.SrcLoc
 
 import           Control.Applicative          (Alternative(..))
 import           Data.Sequence                (Seq(..))
-import           Prelude                      hiding ()
+import           Data.Foldable                (toList)
 
 import           Debug.Trace                  (trace, traceShow)
 
@@ -91,23 +91,23 @@ MaybeEnd(r,e) :: { Maybe r }
     : {- empty -}       { Nothing }
     | r e               { Just $1 }
 
-List0(r) :: { Seq r } -- { Alternative l => l a }
+List0(r) -- :: { Seq r } -- { Alternative l => l a }
     : {- empty -}       { empty }               -- like []
     | List1(r)          { $1    }
 
-List1(r) :: { Seq r } -- { Alternative l => l a }
+List1(r) -- :: { Seq r } -- { Alternative l => l a }
     : r                 { pure $1        }      -- like [$1]
     | List1(r) r        { $1 <|> pure $2 }      -- like $1 ++ [$2]
 
-ListSep0(r,sep) :: { Seq r } -- { Alternative l => l a }
+ListSep0(r,sep) -- :: { Seq r } -- { Alternative l => l a }
     : {- empty -}       { empty }               -- like []
     | ListSep1(r,sep)   { $1    }
 
-ListSepEnd0(r,sep,e) :: { Seq r } -- { Alternative l => l a }
+ListSepEnd0(r,sep,e) -- :: { Seq r } -- { Alternative l => l a }
     : {- empty -}       { empty }               -- like []
     | ListSep1(r,sep) e { $1    }
 
-ListSep1(r,sep) :: { Seq r } -- { Alternative l => l a }
+ListSep1(r,sep) -- :: { Seq r } -- { Alternative l => l a }
     : r                 { pure $1        }      -- like [$1]
     | ListSep1(r,sep) sep r
                         { $1 <|> pure $3 }      -- like $1 ++ [$3]
@@ -128,7 +128,7 @@ QId :: { Qualified }
 ----------------------------------------
 -- modules
 Module :: { Module }
-    : '{^' Top ListSep1(Body,'^;') '^}'
+    : '{^' Top Body '^}'
                         { Module (fst $2) (snd $2) $3 }
 
 ----------------------------------------
@@ -154,9 +154,9 @@ Top :: { (Maybe (Seq Identifier), Seq (Located Import)) }
                                 { (unlocate $3, $4) }       -- layout because is
                                                             -- used in datas
 
-                ImportSpecific :: { () }
+                ImportSpecific :: { Seq Identifier }
                     : '(' ListSep0(Id, ',') ')'
-                                    { () }
+                                    { $2 }
 
     -- if we stop producing a layout after 'as'
     -- Import : 'import' QId Maybe(ImportAs) Maybe(ImportSpecific) {}
@@ -165,68 +165,70 @@ Top :: { (Maybe (Seq Identifier), Seq (Located Import)) }
 
 ----------------------------------------
 -- declarations, definitions
--- Body :: { () }
-    -- : BodyStmt
-                        -- { () }
+Body :: { Body }
+    : ListSep1(BodyStmt, '^;')
+                        { $1 }
 
-    Body :: { () }
+    BodyStmt :: { BodyStmt }
         : Declaration       { $1 }
-        | Function          { $1 }
+        | Definition        { $1 }
 
-        Declaration :: { () }
-            :          Type { () }
+        Declaration :: { BodyStmt }
+            :          Type
+                            { FunctionDecl (typ_id $1) (typ_type $1) }
             | 'closed' Type 'as'
                 '{^' ListSep1(Type, '^;') '^}'
-                            { () }
+                            { DataDecl (typ_id $2) (typ_type $2) $5 }
 
-        Type :: { () }
+        Type :: { TypeDecl }
             : Id ':' Expression Maybe(Where)
-                                { () }
+                                { TypeDecl $1 (Where (maybe empty id $4) $3) }
 
-        Function :: { () }
+        Definition :: { BodyStmt }
             : List1(Argument) Maybe(Implicit) '=' Expression Maybe(Where)
-                                { () }
+                                { FunctionDef $1 (maybe empty id $2) (Where (maybe empty id $5) $4) }
 
-            Implicit :: { () }
+            Implicit :: { Implicit }
                 : '{' ListSep1(ImplicitBinding,',') '}'
-                                    { () }
+                                    { $2 }
 
-                ImplicitBinding :: { () }
-                    : Id '=' Expression { () }
+                ImplicitBinding :: { ImplicitBinding }
+                    : Id '=' Expression { ImplicitBind $1 $3 }
 
-            Argument :: { () }
-                : Binding           { () }
+            Argument :: { Argument }
+                : Id                { Binding $1 }
+                | '_'               { DontCare }
                 | '(' Expression ')'        -- pattern matching
-                                    { () }
-
-                Binding :: { () }
-                    : Id                { () }
-                    | '_'               { () }
+                                    { PatternMatch $2 }
 
         -- for general use in 'Body'
-        Expression :: { () }
-            : List1(Term)       { () }
+        Expression :: { Expression }
+            : List1(Term)       { if length $1 == 1
+                                    then head (toList $1)
+                                    else Application $1
+                                }
 
-            Term :: { () }
-                : QId               { () }
-                | '.'               { () }
-                | '='               { () }
-                | '->'              { () }
+            Term :: { Expression }
+                : QId               { Value (LitId $1) }
+                | ':'               { Value (LitId (Loc (location $1) ":"))  }
+                | '.'               { Value (LitId (Loc (location $1) "."))  }
+                | '->'              { Value (LitId (Loc (location $1) "->")) }
+                | '='               { Value (LitId (Loc (location $1) "="))  }
                 | '\ ' List1(Argument) '->'
-                                    { () }
+                                    { Lambda $2 }
                 | '(' Expression ')'
-                                    { () }
+                                    { $2 }
                 | 'forall' '(' ListSep1(Type,',') ')' '.'
-                                    { () }
+                                    { Forall $3 }
                 | 'exists' '(' Type ';' Expression ')'
-                                    { () }
+                                    { Exists $3 $5 }
                 | 'with' '(' Type ')'
-                                    { () }
-                | Implicit          { () }
+                                    { With $3 }
+                | Implicit          { ImplicitExpr $1 }
 
-    Where :: { () }
-        : 'where' '{^' ListSep1(Body, '^;') '^}'
-                            { () }
+        Where :: { Body }
+            : 'where' '{^' Body '^}'
+                                { $3 }
 
 {
 
