@@ -1,39 +1,50 @@
-name:                angler
-version:             0.1.0.0
-cabal-version:       >=1.10
+name:                   angler
+version:                0.1.0.0
+cabal-version:          >=1.10
 
-license:             BSD3
-license-file:        LICENSE
+license:                BSD3
+license-file:           LICENSE
 
-build-type:          Simple
+build-type:             Simple
 
-author:              Matteo Ferrando, David Lilue, Ricardo Monascal
-maintainer:          Matteo Ferrando <matteo.ferrando2@gmail.com>
+author:                 Matteo Ferrando
+maintainer:             Matteo Ferrando <matteo.ferrando2@gmail.com>
 
-category:            Programming Language, Dependent Types
-synopsis:            Angler Functional Programming Language
+category:               Programming Language, Dependent Types
+synopsis:               Angler Functional Programming Language
 description:
   Angler is ...
 
-homepage:            https://github.com/angler-lang
+homepage:               https://github.com/angler-lang
 
-extra-source-files:  README.md
+extra-source-files:     README.md
 
-bug-reports:         https://github.com/angler-lang/angler-lang/issues
+bug-reports:            https://github.com/angler-lang/angler-lang/issues
 source-repository head
-  type:     git
-  location: https://github.com/angler-lang/angler-lang.git
+  type:                 git
+  location:             https://github.com/angler-lang/angler-lang.git
 
 
 executable angler
-  hs-source-dirs:      src
-  main-is:             Main.hs
+  hs-source-dirs:       src
+  main-is:              Main.hs
 
-  other-modules:       Language.Angler.Parser.Lexer
-                     , Language.Angler.Parser.Parser
-  build-tools:         alex, happy
+  other-modules:          Language.Angler.Parser.Lexer
+                        , Language.Angler.Parser.Parser
+  build-tools:          alex, happy
 
   -- other-extensions:
-  build-depends:       base >=4.7 && <4.8, array, containers, mtl, directory
-  default-language:    Haskell2010
-  ghc-options:         -Wall -Werror
+  build-depends:          base >=4.8 && <4.9
+                        , array
+                                -- alex
+                        , containers
+                                -- alex, Data.Sequence
+                        , directory
+                                -- System.Directory
+                        , lens
+                                -- Control.Lens
+                        , mtl
+                                -- MonadTrans
+  default-language:     Haskell2010
+  -- ghc-options:          -Wall -Werror
+  ghc-options:          -Wall
