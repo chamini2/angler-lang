@@ -37,6 +37,8 @@ executable angler
   build-depends:          base >=4.8 && <4.9
                         , array
                                 -- alex
+                        , utf8-string
+                                -- Codec.Binary.String.UTF8
                         , containers
                                 -- alex, Data.Sequence
                         , directory
