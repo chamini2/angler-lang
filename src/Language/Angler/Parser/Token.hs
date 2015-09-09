@@ -4,9 +4,9 @@ data Token
   -- identifiers
   -- = TkTypeId            String
   -- | TkFunctionId        String
-  = TkIdentifier        String
+  = TkIdentifier        { tkId :: String }
   -- | TkImportPath        FilePath
-  | TkQualified         String
+  | TkQualified         { tkId :: String }
 
   -- comments
   | TkLineComment       String
@@ -28,6 +28,7 @@ data Token
   | TkAs
   | TkClosed
   | TkOpen
+  | TkReopen
   | TkWhere
   | TkForall
   | TkExists
@@ -39,11 +40,12 @@ data Token
   -- reserved symbols
   | TkColon
   | TkSemicolon
-  | TkDot
+  -- | TkDot
   | TkArrow
   | TkBackslash
   | TkEquals
   | TkComma
+  -- | TkAt
   | TkLParen
   | TkRParen
   | TkLCurly
@@ -77,6 +79,7 @@ instance Show Token where
         TkAs               -> "as"
         TkClosed           -> "closed"
         TkOpen             -> "open"
+        TkReopen           -> "reopen"
         TkWhere            -> "where"
         TkForall           -> "forall"
         TkExists           -> "exists"
@@ -86,11 +89,12 @@ instance Show Token where
 
         TkColon            -> ":"
         TkSemicolon        -> ";"
-        TkDot              -> "."
+        -- TkDot              -> "."
         TkArrow            -> "->"
         TkBackslash        -> "\\"
         TkEquals           -> "="
         TkComma            -> ","
+        -- TkAt               -> "@"
         TkLParen           -> "("
         TkRParen           -> ")"
         TkLCurly           -> "{"
