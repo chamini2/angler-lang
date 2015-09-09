@@ -1,6 +1,6 @@
 export (Nat, filter)
 
-import Data.List as L (List)
+import Data.List as L (List, _::_, Nil)
 
 _._ : forall (a:Type, b:Type, c:Type) . (b -> c) -> (a -> b) -> a -> c
 -- (f . g) x = f (g x)
@@ -26,39 +26,53 @@ f $ x = f x
 -- USD = EUR
 
 String : Type
-String = List Char
+String = L.List Char
 
 closed Bool : Type as
-	True  : Bool
-	False : Bool
+        True  : Bool
+        False : Bool
+
+-- Bool = Nat           -- error: Bool is data type
+-- True = False         -- error: True is constructor
+
+reopen Type as
+        Tipo : Type -> Type
+
+open Currency : Type as
+        USD : Currency
+        EUR : Currency
+
+reopen Currency as
+        VEF : Currency
+        YEN : Currency
 
 {-closed Bool : Type as
-	closed True  : Bool as
-		Yes  : True
-		Yeap : True
-	closed False : Bool as
-		No : False
-		Nope : False
-	Bool = Char -}
+        closed True  : Bool as
+                Yes  : True
+                Yeap : True
+        closed False : Bool as
+                No : False
+                Nope : False
+        Bool = Char -}
 
 if_then_else_ : forall (t:Type) . Bool -> t -> t -> t
 if_then_else_ True yes _ = yes
 if_then_else_ False _ no = no
 
 closed Nat : Type as
-	Z : Nat
-	S : Nat -> Nat
+        Z : Nat
+        S : Nat -> Nat
 
 closed Vect : forall (t:Type) . Nat -> t -> Type as
-	Nil  : Vect Z t
-	_::_ : forall (n : Nat) . t -> Vect n t -> List (S n) t
+        Nil  : Vect Z t
+        _::_ : forall (n : Nat) . t -> Vect n t -> Vect (S n) t
 
 _+_ : t -> t -> t
-	where t = Nat
+        where t = Nat
 -- t no está disponible aquí
-(Z)   + m = m
-(S n) + m = S (n + m)
-_+_ (Z)   m = m
+Z     +   m = m
+(S n) +   m = S (n + m)
+_+_ Z     m = m
 _+_ (S n) m = S (n + m)
 
 id : forall (t:Type) . t -> t
@@ -68,20 +82,41 @@ id x = x
 the t x = id { t = t } x
 
 filter : forall (t:Type) . (t -> Bool) -> L.List t -> L.List t
-filter g (x :: xs) {t = tpe} =
-	(if g x
-		then _::_ x
-		else the (L.List tpe)) filter g xs
-filter _ (Nil) = Nil
+-- filter g (x :: xs) {t = tpe} =
+--         (if g x
+--                 then _::_ x
+--                 else the (L.List tpe)) filter g xs
+filter g (x L.:: xs) =
+        (if g x
+                then _::_ x
+                else id) filter g xs
+filter _ (L.Nil) = L.Nil
 
 filterVect : forall (t:Type, n:Nat) . (t -> Bool) -> Vect n t -> exists (m:Nat ; Vect m t)
-filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
-filterVect _ (Nil    ) {n = Z    } = Nil
+filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
+filterVect _ (Nil    ) = Nil
+-- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
+-- filterVect _ (Nil    ) {n = Z    } = Nil
 
 -- map : forall
 
 zeroes : L.List Nat -> L.List Nat
-zeroes = filter \ Z -> True
+zeroes = filter $ \ Z -> True
 
 ones : L.List Nat -> L.List Nat
 ones = map S . zeroes
+
+firstZ : forall (n:Nat) Vect n Nat -> Nat
+firstZ (Z :: xs) = Z
+firstZ (_ :: xs) = S (firstZ xs)
+-- firstZ Nil       = error "no Z in Vect"      -- no strings yet
+
+_=_ : Type -> Type -> Type
+(a = b) = a               -- parses a = «b = a»
+
+-- f : (Type -> Type -> Type) -> Nat -> Nat
+-- f = \ -> n -> n      -- parse error: no arguments for lambda
+
+-- : : String -> Type -> (String & Type) -- parser error: ':' unexpected
+:* : String -> Type -> (String & Type)
+:* str typ = str /\ typ
