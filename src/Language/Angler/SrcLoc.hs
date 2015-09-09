@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.Angler.SrcLoc
         ( SrcLoc(..)
         , locMove
@@ -14,17 +15,19 @@ module Language.Angler.SrcLoc
         , srcSpanECol
 
         , Located(..)
-        , unlocate
-        , location
+        , loc_span
+        , loc_insd
+        , srcSpanSpan
         , srcLocatedSpan
         ) where
 
+import           Control.Lens
 import           Prelude hiding (span)
 
 -- is only used in the lexer
 data SrcLoc
   = SrcLoc
-        { srcLocFile    :: String
+        { srcLocFile    :: FilePath
         , srcLocLine    :: Int     -- line number, begins at 1
         , srcLocCol     :: Int     -- column number, begins at 1
         }
@@ -39,19 +42,19 @@ locMove (SrcLoc file line col) chr = case chr of
 -- used for errors after the lexer
 data SrcSpan
   = SrcSpanNoInfo
-  | SrcSpanPoint String Int Int
-        -- { srcSpanFile   :: String
+  | SrcSpanPoint FilePath Int Int
+        -- { srcSpanFile   :: FilePath
         -- , srcSpanLine   :: Int
         -- , srcSpanCol    :: Int
         -- }
-  | SrcSpanOneLine String Int Int Int
-        -- { srcSpanFile   :: String
+  | SrcSpanOneLine FilePath Int Int Int
+        -- { srcSpanFile   :: FilePath
         -- , srcSpanLine   :: Int
         -- , srcSpanSCol   :: Int
         -- , srcSpanECol   :: Int
         -- }
-  | SrcSpanMultiline String Int Int Int Int
-        -- { srcSpanFile   :: String
+  | SrcSpanMultiline FilePath Int Int Int Int
+        -- { srcSpanFile   :: FilePath
         -- , srcSpanSLine  :: Int
         -- , srcSpanSCol   :: Int
         -- , srcSpanELine  :: Int
@@ -111,14 +114,17 @@ srcSpanECol span = case span of
         SrcSpanOneLine   _f _l  _sc ec     -> ec
         SrcSpanMultiline _f _sl _sc _el ec -> ec
 
-data Located e = Loc SrcSpan e
+data Located e
+  = Loc
+        { _loc_span :: SrcSpan
+        , _loc_insd :: e
+        }
   deriving Show
 
-unlocate :: Located e -> e
-unlocate (Loc _ e) = e
+makeLenses ''Located
 
-location :: Located e -> SrcSpan
-location (Loc l _) = l
+srcSpanSpan :: SrcSpan -> SrcSpan -> SrcSpan
+srcSpanSpan s e = srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan
-srcLocatedSpan (Loc s _) (Loc e _) = srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
+srcLocatedSpan (Loc s _) (Loc e _) = srcSpanSpan s e
