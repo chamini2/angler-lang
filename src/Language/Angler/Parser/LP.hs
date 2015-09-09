@@ -1,22 +1,29 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 module Language.Angler.Parser.LP
         ( LP
         , LayoutContext(..)
         , LPState(..)
+        , lp_buffer, lp_last_char, lp_loc, lp_bytes
+        -- , lp_last_tk, lp_last_loc, lp_last_len
+        , lp_lex_state, lp_context, lp_srcfiles
         , Byte
 
         , throwError
         , get, gets, modify, put
-        , pushLexState, peekLexState, popLexState
-        , pushContext, popContext
+        , pushLP, popLP, peekLP
+        -- , pushLexState, peekLexState, popLexState
+        -- , pushContext, popContext
         , getOffside
         ) where
 
 import           Language.Angler.SrcLoc
 import           Language.Angler.Error
 
-import           Control.Monad.Identity (Identity(..))
+import           Control.Lens
 import           Control.Monad.Except   (ExceptT(..), throwError)
 import           Control.Monad.State    (StateT(..), get, gets, modify, put)
+import           Data.Maybe             (fromJust)
 import           Data.Word              (Word8)
 
 import           Prelude                hiding (span)
@@ -35,49 +42,36 @@ data LayoutContext
 -- from GHC's Lexer
 data LPState
   = LPState
-        { lp_buffer     :: String
-        , lp_last_char  :: Char
-        , lp_loc        :: SrcLoc               -- current location (end of prev token + 1)
-        , lp_bytes      :: [Byte]
-        -- , lp_last_tk    :: Maybe Token
-        -- , lp_last_loc   :: SrcSpan              -- location of previous token
-        -- , lp_last_len   :: Int                  -- length of previous token
-        , lp_lex_state  :: [Int]                -- lexer states stack
-        , lp_context    :: [LayoutContext]      -- contexts stack
-        , lp_srcfiles   :: [String]
+        { _lp_buffer    :: String
+        , _lp_last_char :: Char
+        , _lp_loc       :: SrcLoc               -- current location (end of prev token + 1)
+        , _lp_bytes     :: [Byte]
+        -- , _lp_last_tk   :: Maybe Token
+        -- , _lp_last_loc  :: SrcSpan              -- location of previous token
+        -- , _lp_last_len  :: Int                  -- length of previous token
+        , _lp_lex_state :: [Int]                -- lexer states stack
+        , _lp_context   :: [LayoutContext]      -- contexts stack
+        , _lp_srcfiles  :: [String]
         }
+
+makeLenses ''LPState
 
 ----------------------------------------
 -- LPState's manipulation
 
-pushLexState :: Int -> LP ()
-pushLexState ls = modify $ \s -> let lss = lp_lex_state s
-                                 in s { lp_lex_state = ls : lss }
+pushLP :: Lens' LPState [a] -> a -> LP ()
+pushLP lns x = lns %= cons x
 
-peekLexState :: LP Int
-peekLexState = gets (head . lp_lex_state)
+peekLP :: Lens' LPState [a] -> LP a
+peekLP lns = preuse (lns._head) >>= return . fromJust
 
-popLexState :: LP Int
-popLexState = do
-        ls : lss <- gets lp_lex_state
-        modify $ \s -> s{ lp_lex_state = lss }
-        return ls
-
-pushContext :: LayoutContext -> LP ()
-pushContext lc = modify $ \s -> let lcs = lp_context s
-                                in s { lp_context = lc : lcs }
-
-popContext :: LP LayoutContext
-popContext = do
-        lc : lcs <- gets lp_context
-        modify $ \s -> s{ lp_context = lcs }
-        return lc
+popLP :: Lens' LPState [a] -> LP ()
+popLP lns = use (lns._tail) >>= assign lns
 
 getOffside :: SrcSpan -> LP Ordering
 getOffside span = do
-        stk <- gets lp_context
+        stk <- use lp_context
         let indent = srcSpanSCol span
         return $ case stk of
                 Layout indent' : _ -> compare indent indent'
                 _                  -> GT
-

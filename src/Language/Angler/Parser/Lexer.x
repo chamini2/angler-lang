@@ -26,7 +26,6 @@ import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map (lookup, fromList)
 import           Data.Word                     (Word8)
 
-import           Debug.Trace                   (trace, traceShow)
 
 import           Prelude                       hiding (id, lookup, span)
 
@@ -115,6 +114,8 @@ $white_no_nl+   ;
         \;      { token TkSemicolon }
         \,      { token TkComma     }
 
+        -- \@      { token TkAt        }
+
         \(      { token TkLParen }
         \)      { token TkRParen }
         \{      { token TkLCurly }
@@ -144,6 +145,7 @@ reserved = Map.fromList
         , ("as"       , TkAs        )
         , ("closed"   , TkClosed    )
         , ("open"     , TkOpen      )
+        , ("reopen"   , TkReopen    )
         , ("where"    , TkWhere     )
         , ("forall"   , TkForall    )
         , ("exists"   , TkExists    )
@@ -155,7 +157,7 @@ reserved = Map.fromList
         -- symbols
         , (":"        , TkColon     )
         -- , (";"        , TkSemicolon )
-        , ("."        , TkDot       )
+        -- , ("."        , TkDot       )
         , ("->"       , TkArrow     )
         , ("\\"       , TkBackslash )
         , ("="        , TkEquals    )
@@ -201,15 +203,18 @@ type Action = LPAction (Located Token)
 -- LPState's manipulation
 
 getInput :: LP AlexInput
-getInput = get >>= \s -> let l  = lp_loc s
-                             c  = lp_last_char s
-                             bs = lp_bytes s
-                             b  = lp_buffer s
+getInput = get >>= \s -> let l  = view lp_loc s
+                             c  = view lp_last_char s
+                             bs = view lp_bytes s
+                             b  = view lp_buffer s
                          in return (l, c, bs, b)
 
 setInput :: AlexInput -> LP ()
-setInput (loc,c,bs,inp) = modify $ \s ->
-        s{ lp_loc = loc, lp_buffer = inp, lp_bytes = bs, lp_last_char = c }
+setInput (loc,c,bs,inp) = do
+        lp_loc       .= loc
+        lp_buffer    .= inp
+        lp_bytes     .= bs
+        lp_last_char .= c
 
 ----------------------------------------
 -- Lexer predicates
@@ -225,18 +230,15 @@ nextIsEOF _ _ _ (_,_,_,b) = null b
 token :: Token -> Action
 token tk span _buf _len = return (Loc span tk)
 
-layoutToken :: Token -> Action
-layoutToken tk span _buf _len = pushLexState layout >> return (Loc span tk)
-
 tokenStore :: (String -> Token) -> Action
 tokenStore fnTk span buf len = let tk = fnTk (take len buf)
                               in return (Loc span tk)
 
 push :: Int -> Action
-push ls _span _buf _len = pushLexState ls >> lexToken
+push ls _span _buf _len = pushLP lp_lex_state ls >> lexToken
 
 pop :: Action
-pop _span _buf _len = popLexState >> lexToken
+pop _span _buf _len = popLP lp_lex_state >> lexToken
 
 -- from GHC's lexer
 identifier :: (String -> Token) -> Action
@@ -249,30 +251,28 @@ identifier idTk span buf len = let str = take len buf in
         -- add an opening curly brace.
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
-                TkWhere -> pushLexState layout
-                TkAs    -> pushLexState layout  -- for closed types, not imports
+                TkWhere -> pushLP lp_lex_state layout
+                TkAs    -> pushLP lp_lex_state layout  -- for types, not imports
                 _       -> return ()
 
 newLayoutContext :: Token -> Action
 newLayoutContext tk span _buf len = do
-        -- trace "--------- {" popLexState
-        popLexState
+        popLP lp_lex_state
         (l,_,_,_) <- getInput
         let offset = srcLocCol l - len
-        ctx <- gets lp_context
+        ctx <- use lp_context
         case ctx of
                 Layout prev_off : _
                         | prev_off >= offset ->
                                 -- token is indented to the left of the previous context.
                                 -- we must generate a {} sequence now.
-                                pushLexState empty_layout >> return (Loc span tk)
-                _ -> pushContext (Layout offset) >> return (Loc span tk)
+                                pushLP lp_lex_state empty_layout >> return (Loc span tk)
+                _ -> pushLP lp_context (Layout offset) >> return (Loc span tk)
 
 emptyLayout :: Action
 emptyLayout span _buf _len = do
-        -- trace "--------- }" popLexState
-        popLexState
-        pushLexState bol
+        popLP lp_lex_state
+        pushLP lp_lex_state bol
         return (Loc span TkVRCurly)
 
 processLayout :: Action
@@ -281,14 +281,11 @@ processLayout span _buf _len = do
         case pos of
                 -- not popping the lexState, we might have a ';' or another '}' to insert
                 -- inserting '}'
-                LT -> -- trace "--------- }" $
-                        popContext >> return (Loc span TkVRCurly)
+                LT -> popLP lp_context >> return (Loc span TkVRCurly)
                 -- inserting ';'
-                EQ -> do -- trace "--------- ;" $
-                        popLexState >> return (Loc span TkVSemicolon)
-                -- keep lexing as same in line
-                GT -> -- trace "--------- |" $
-                        popLexState >> lexToken
+                EQ -> popLP lp_lex_state >> return (Loc span TkVSemicolon)
+                -- keep lexing as if in the same line
+                GT -> popLP lp_lex_state >> lexToken
 
 --------------------------------------------------------------------------------
 -- exposed functions
@@ -297,32 +294,24 @@ runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
 runLP input loc = runIdentity . runExceptT . flip runStateT initialST
     where
         initialST = LPState
-                { lp_buffer    = input
-                , lp_last_char = '\n'
-                , lp_loc       = loc
-                , lp_bytes     = []
-                -- , last_tk      = Nothing
-                -- , last_loc     = srcLocSpan loc loc
-                -- , last_len     = 0
-                , lp_lex_state = [layout, 0]            -- start in 'layout' state to
+                { _lp_buffer    = input
+                , _lp_last_char = '\n'
+                , _lp_loc       = loc
+                , _lp_bytes     = []
+                -- , _lp_last_tk   = Nothing
+                -- , _lp_last_loc  = srcLocSpan loc loc
+                -- , _lp_last_len  = 0
+                , _lp_lex_state = [layout, 0]           -- start in 'layout' state to
                                                         -- introduce the global layout
-                , lp_context   = []
-                , lp_srcfiles  = []
+                , _lp_context   = []
+                , _lp_srcfiles  = []
                 }
 
 execLP :: String -> SrcLoc -> LP a -> Either (Located Error) LPState
-execLP input loc = check . runLP input loc
-    where
-        check r = case r of
-                Right (_, st) -> Right st
-                Left  l       -> Left l
+execLP input loc = over _Right snd . runLP input loc
 
 evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) a
-evalLP input loc = check . runLP input loc
-    where
-        check r = case r of
-                Right (a, _st) -> Right a
-                Left  l        -> Left l
+evalLP input loc = over _Right fst . runLP input loc
  
 ----------------------------------------
 -- lexer handling
@@ -333,32 +322,21 @@ lexer = (>>=) lexToken
 lexToken :: LP (Located Token)
 lexToken = do
         inp@(l,_c,_bs,b) <- getInput
-        ls <- peekLexState
-        -- trace (showAlex b (alexScan inp ls)) $
-                -- traceShow l $
-                        -- gets lp_lex_state >>= \lss -> trace (" states: " ++ show lss) $ gets lp_context   >>= \lcs -> trace ("context: " ++ show lcs) (return ())
+        ls <- peekLP lp_lex_state
         case alexScan inp ls of
-                AlexEOF -> do
-                        ctx <- gets lp_context
-                        case ctx of
-                                -- closing all the open layouts we had
-                                _ : _  -> popContext >> return (Loc (srcLocSpan l l) TkVRCurly)
-                                _      -> return (Loc (srcLocSpan l l) TkEOF)
+                AlexEOF -> use lp_context >>= \ctx -> if not (null ctx)
+                        -- closing all the open layouts we had
+                        then popLP lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
+                        else return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
                         throwError (Loc (srcLocSpan l l) (LexError (LErrUnexpectedCharacter c')))
                 AlexSkip  inp' _len -> setInput inp' >> lexToken
                 AlexToken inp'@(l',_,_,_) len act -> setInput inp' >> act (srcLocSpan l l') b len
-    -- where
-    --     showAlex b as = case as of
-    --             AlexEOF -> "AlexEOF"
-    --             AlexError (l,_,_,_) -> "AlexError at " ++ show l
-    --             AlexSkip _ l -> "AlexSkip (" ++ show l ++ ") " ++ show (take l b)
-    --             AlexToken (_,_,_,_) l _-> "AlexToken (" ++ show l ++ ") " ++ show (take l b)
 
 lexTokens :: LP [Located Token]
 lexTokens = do
         tk  <- lexToken
-        tks <- case unlocate tk of
+        tks <- case view loc_insd tk of
                 TkEOF -> return []
                 _     -> lexTokens
         return (tk:tks)
