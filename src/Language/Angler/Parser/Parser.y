@@ -13,6 +13,7 @@ import           Language.Angler.Parser.Token
 import           Language.Angler.SrcLoc
 
 import           Control.Applicative          (Alternative(..))
+import           Control.Lens
 import           Data.Sequence                (Seq(..))
 import           Data.Foldable                (toList)
 
@@ -25,13 +26,8 @@ import           Debug.Trace                  (trace, traceShow)
 %tokentype { (Located Token) }
 %error { parseError }
 
-
--- lambda expressions in the 'Term' rule currently generates 9 shift/reduce
--- conflicts, which are resolved as shift
--- %expect 9
-
 -- Exported parsers
-%name parseModule Module -- where
+%name parseModule Module
 -- %name parseImport importdecl
 -- %name parseStatement stmt
 -- %name parseDeclaration topdecl
@@ -60,6 +56,7 @@ import           Debug.Trace                  (trace, traceShow)
         'as'                    { Loc _ TkAs             }
         'closed'                { Loc _ TkClosed         }
         'open'                  { Loc _ TkOpen           }
+        'reopen'                { Loc _ TkReopen         }
         'where'                 { Loc _ TkWhere          }
         'forall'                { Loc _ TkForall         }
         'exists'                { Loc _ TkExists         }
@@ -69,11 +66,12 @@ import           Debug.Trace                  (trace, traceShow)
 
         ':'                     { Loc _ TkColon          }
         ';'                     { Loc _ TkSemicolon      }
-        '.'                     { Loc _ TkDot            }
+        -- '.'                     { Loc _ TkDot            }
         '->'                    { Loc _ TkArrow          }
         '\ '                    { Loc _ TkBackslash      }
         '='                     { Loc _ TkEquals         }
         ','                     { Loc _ TkComma          }
+        -- '@'                     { Loc _ TkAt             }
         '('                     { Loc _ TkLParen         }
         ')'                     { Loc _ TkRParen         }
         '{'                     { Loc _ TkLCurly         }
@@ -91,34 +89,34 @@ MaybeEnd(r,e) :: { Maybe r }
     : {- empty -}       { Nothing }
     | r e               { Just $1 }
 
-List0(r) -- :: { Seq r } -- { Alternative l => l a }
+List0(r)
     : {- empty -}       { empty }               -- like []
     | List1(r)          { $1    }
 
-List1(r) -- :: { Seq r } -- { Alternative l => l a }
-    : r                 { pure $1        }      -- like [$1]
-    | List1(r) r        { $1 <|> pure $2 }      -- like $1 ++ [$2]
+List1(r)
+    : r                 { pure $1  }            -- like [$1]
+    | List1(r) r        { $1 |> $2 }            -- like $1 ++ [$2]
 
-ListSep0(r,sep) -- :: { Seq r } -- { Alternative l => l a }
+ListSep0(r,sep)
     : {- empty -}       { empty }               -- like []
     | ListSep1(r,sep)   { $1    }
 
-ListSepEnd0(r,sep,e) -- :: { Seq r } -- { Alternative l => l a }
+ListSepEnd0(r,sep,e)
     : {- empty -}       { empty }               -- like []
     | ListSep1(r,sep) e { $1    }
 
-ListSep1(r,sep) -- :: { Seq r } -- { Alternative l => l a }
-    : r                 { pure $1        }      -- like [$1]
+ListSep1(r,sep)
+    : r                 { pure $1  }            -- like [$1]
     | ListSep1(r,sep) sep r
-                        { $1 <|> pure $3 }      -- like $1 ++ [$3]
+                        { $1 |> $3 }            -- like $1 ++ [$3]
 
 --------------------------------------------------------------------------------
 -- identifiers
-Id :: { Identifier }
-    : ident             { let Loc l (TkIdentifier str) = $1 in Loc l str }
+Id :: { IdentifierSpan }
+    : ident             { Identifier (tkId ($1^.loc_insd)) ($1^.loc_span) }
 
-QId :: { Qualified }
-    : qualf             { let Loc l (TkQualified str) = $1 in Loc l str }
+QId :: { IdentifierSpan }
+    : qualf             { Identifier (tkId ($1^.loc_insd)) ($1^.loc_span) }
     | Id                { $1 }
     -- | ImportPath        { $1 }
 
@@ -127,34 +125,35 @@ QId :: { Qualified }
 
 ----------------------------------------
 -- modules
-Module :: { Module }
+Module :: { ModuleSpan }
     : '{^' Top Body '^}'
-                        { Module (fst $2) (snd $2) $3 }
+                        { Module (fst $2) (snd $2) $3
+                            (srcLocatedSpan $1 $4) }
 
 ----------------------------------------
 -- export and imports
-Top :: { (Maybe (Seq Identifier), Seq (Located Import)) }
+Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
     : MaybeEnd(Export, '^;')
-      ListSepEnd0(Import, '^;', '^;')
+        ListSepEnd0(Import, '^;', '^;')
                         { ($1, $2) }
 
-    Export :: { Seq Identifier }
+    Export :: { Seq IdentifierSpan }
         : 'export' '(' ListSep0(Id, ',') ')'
                             { $3 }
 
-    Import :: { Located Import }
+    Import :: { ImportSpan }
         : 'import' QId ImportOptions
-                            { Loc (srcLocatedSpan $1 $2)
-                                (Import (unlocate $2) (fst $3) (snd $3)) }
+                            { Import ($2^.idn_str) (fst $3) (snd $3)
+                                (srcSpanSpan ($1^.loc_span) ($2^.idn_annot)) }
 
-            ImportOptions :: { (String, Maybe (Seq Identifier)) }
+            ImportOptions :: { (Maybe IdentifierSpan, Maybe (Seq IdentifierSpan)) }
                 : Maybe(ImportSpecific)
-                                { ("", $1) }
+                                { (Nothing, $1) }
                 | 'as' '{^' QId Maybe(ImportSpecific) '^}'  -- 'as' produces a
-                                { (unlocate $3, $4) }       -- layout because is
+                                { (Just $3, $4) }           -- layout because is
                                                             -- used in datas
 
-                ImportSpecific :: { Seq Identifier }
+                ImportSpecific :: { Seq IdentifierSpan }
                     : '(' ListSep0(Id, ',') ')'
                                     { $2 }
 
@@ -165,70 +164,104 @@ Top :: { (Maybe (Seq Identifier), Seq (Located Import)) }
 
 ----------------------------------------
 -- declarations, definitions
-Body :: { Body }
+Body :: { BodySpan }
     : ListSep1(BodyStmt, '^;')
                         { $1 }
 
-    BodyStmt :: { BodyStmt }
+    BodyStmt :: { BodyStmtSpan }
         : Declaration       { $1 }
         | Definition        { $1 }
 
-        Declaration :: { BodyStmt }
+        Declaration :: { BodyStmtSpan }
             :          Type
-                            { FunctionDecl (typ_id $1) (typ_type $1) }
-            | 'closed' Type 'as'
-                '{^' ListSep1(Type, '^;') '^}'
-                            { DataDecl (typ_id $2) (typ_type $2) $5 }
+                            { FunctionDecl ($1^.typ_id) ($1^.typ_type)
+                                ($1^.typ_annot) }
+            | 'open'   Type Maybe(Constructors)
+                            { OpenType ($2^.typ_id) ($2^.typ_type) (fmap fst $3)
+                                (srcSpanSpan ($1^.loc_span)
+                                             (maybe ($2^.typ_annot) snd $3)) }
+            | 'reopen' QId  Constructors
+                            { ReopenType $2 (fst $3)
+                                (srcSpanSpan ($1^.loc_span) (snd $3)) }
+            | 'closed' Type Constructors
+                            { ClosedType ($2^.typ_id) ($2^.typ_type) (fst $3)
+                                (srcSpanSpan ($1^.loc_span) (snd $3)) }
 
-        Type :: { TypeDecl }
+            Constructors :: { (Seq (TypeDeclSpan), SrcSpan) }
+                : 'as'
+                    '{^' ListSep1(Type, '^;') '^}'
+                                { ($3, srcLocatedSpan $1 $4) }
+
+        Type :: { TypeDeclSpan }
             : Id ':' Expression Maybe(Where)
-                                { TypeDecl $1 (Where (maybe empty id $4) $3) }
+                                { TypeDecl $1
+                                    (Where (maybe empty fst $4) $3
+                                        (maybe SrcSpanNoInfo snd $4))
+                                    (srcSpanSpan ($1^.idn_annot) ($3^.exp_annot)) }
 
-        Definition :: { BodyStmt }
-            : List1(Argument) Maybe(Implicit) '=' Expression Maybe(Where)
-                                { FunctionDef $1 (maybe empty id $2) (Where (maybe empty id $5) $4) }
+        Definition :: { BodyStmtSpan }
+            : List1(Argument) '=' Expression Maybe(Where)
+                                { FunctionDef $1
+                                    (Where (maybe empty fst $4) $3
+                                        (maybe SrcSpanNoInfo snd $4))
+                                    (srcSpanSpan ($1^?!_head.arg_annot) ($3^.exp_annot)) }
 
-            Implicit :: { Implicit }
-                : '{' ListSep1(ImplicitBinding,',') '}'
-                                    { $2 }
+            Argument :: { ArgumentSpan }
+                : '_'               { DontCare ($1^.loc_span) }
+                | '(' List1(ArgExpId) ')'
+                                    { ParenthesizedBinding $2
+                                        (srcLocatedSpan $1 $3) }
+                | QId               { Binding $1 ($1^.idn_annot) }
 
-                ImplicitBinding :: { ImplicitBinding }
-                    : Id '=' Expression { ImplicitBind $1 $3 }
-
-            Argument :: { Argument }
-                : Id                { Binding $1 }
-                | '_'               { DontCare }
-                | '(' Expression ')'        -- pattern matching
-                                    { PatternMatch $2 }
+                ArgExpId :: { ArgumentSpan }
+                    : '_'               { DontCare ($1^.loc_span) }
+                    | '(' List1(ArgExpId) ')'
+                                        { ParenthesizedBinding $2
+                                            (srcLocatedSpan $1 $3) }
+                    | ExpId             { Binding $1 ($1^.idn_annot) }
 
         -- for general use in 'Body'
-        Expression :: { Expression }
+        Expression :: { ExpressionSpan }
             : List1(Term)       { if length $1 == 1
                                     then head (toList $1)
                                     else Application $1
+                                        (srcSpanSpan ($1 ^?! _head.exp_annot)
+                                                     ($1 ^?! _last.exp_annot))
                                 }
 
-            Term :: { Expression }
-                : QId               { Value (LitId $1) }
-                | ':'               { Value (LitId (Loc (location $1) ":"))  }
-                | '.'               { Value (LitId (Loc (location $1) "."))  }
-                | '->'              { Value (LitId (Loc (location $1) "->")) }
-                | '='               { Value (LitId (Loc (location $1) "="))  }
+            Term :: { ExpressionSpan }
+                : ExpId             { Var ($1^.idn_str) ($1^.idn_annot) }
                 | '\ ' List1(Argument) '->'
-                                    { Lambda $2 }
+                                    { Lambda $2
+                                        (srcLocatedSpan $1 $3) }
                 | '(' Expression ')'
-                                    { $2 }
-                | 'forall' '(' ListSep1(Type,',') ')' '.'
-                                    { Forall $3 }
+                                    { $2 & exp_annot .~ (srcLocatedSpan $1 $3) }
+                | 'forall' '(' ListSep1(Type,',') ')'
+                                    { Forall $3
+                                        (srcLocatedSpan $1 $4) }
                 | 'exists' '(' Type ';' Expression ')'
-                                    { Exists $3 $5 }
+                                    { Exists $3 $5
+                                        (srcLocatedSpan $1 $6) }
                 | 'with' '(' Type ')'
-                                    { With $3 }
-                | Implicit          { ImplicitExpr $1 }
+                                    { With $3
+                                        (srcLocatedSpan $1 $4) }
+                | '{' ListSep1(ImplicitBinding,',') '}'
+                                    { ImplicitExpr $2 (srcLocatedSpan $1 $3) }
 
-        Where :: { Body }
+                ExpId :: { IdentifierSpan }
+                    : QId               { $1 }
+                    | ':'               { Identifier ":"  ($1^.loc_span) }
+                    | '->'              { Identifier "->" ($1^.loc_span) }
+                    | '='               { Identifier "="  ($1^.loc_span) }
+
+                ImplicitBinding :: { ImplicitBindingSpan }
+                    : Id '=' Expression { ImplicitBind $1 $3
+                                            (srcSpanSpan ($1^.idn_annot)
+                                                         ($3^.exp_annot)) }
+
+        Where :: { (BodySpan, SrcSpan) }
             : 'where' '{^' Body '^}'
-                                { $3 }
+                                { ($3, srcLocatedSpan $1 $4) }
 
 {
 
