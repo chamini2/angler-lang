@@ -13,9 +13,9 @@ data Token
   | TkBlockComment      String
 
   -- literals
-  | TkInteger           Int
-  | TkChar              Char
-  | TkString            String
+  | TkInteger           { tkInt    :: Int    }
+  | TkChar              { tkChar   :: Char   }
+  | TkString            { tkString :: String }
 
   -- layouts
   | TkVLCurly
@@ -40,7 +40,7 @@ data Token
   -- reserved symbols
   | TkColon
   | TkSemicolon
-  -- | TkDot
+  | TkDot
   | TkArrow
   | TkBackslash
   | TkEquals
@@ -89,7 +89,7 @@ instance Show Token where
 
         TkColon            -> ":"
         TkSemicolon        -> ";"
-        -- TkDot              -> "."
+        TkDot              -> "."
         TkArrow            -> "->"
         TkBackslash        -> "\\"
         TkEquals           -> "="
