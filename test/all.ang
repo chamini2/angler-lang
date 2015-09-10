@@ -2,13 +2,23 @@ export (Nat, filter)
 
 import Data.List as L (List, _::_, Nil)
 
-_._ : forall (a:Type, b:Type, c:Type) . (b -> c) -> (a -> b) -> a -> c
--- (f . g) x = f (g x)
+id : forall t:Type . t -> t
+the : with t:Type -> t -> t
+
+id x = x
+the t x = id { t = t } x
+
+_._ : forall a:Type, b:Type -> C, c:Type . (b -> c) -> (a -> b) -> a -> c
+(f . g) x = f (g x)
 
 -- _$_ (infix 0) : forall a:Type, b:Type . (a -> b) -> a -> b
 
-_$_ : forall (a:Type, b:Type) . (a -> b) -> a -> b
+_$_ : forall a:Type, b:Type . (a -> b) -> a -> b
 f $ x = f x
+
+closed Nat : Type as
+        Z : Nat
+        S : Nat -> Nat
 
 -- _._ {a = Nat, c = Nat} id id
 
@@ -39,12 +49,12 @@ reopen Type as
         Tipo : Type -> Type
 
 open Currency : Type as
-        USD : Currency
-        EUR : Currency
+        USD : Nat -> Currency
+        EUR : Nat -> Currency
 
 reopen Currency as
-        VEF : Currency
-        YEN : Currency
+        VEF : Nat -> Currency
+        YEN : Nat -> Currency
 
 {-closed Bool : Type as
         closed True  : Bool as
@@ -55,17 +65,13 @@ reopen Currency as
                 Nope : False
         Bool = Char -}
 
-if_then_else_ : forall (t:Type) . Bool -> t -> t -> t
+if_then_else_ : forall t:Type . Bool -> t -> t -> t
 if_then_else_ True yes _ = yes
 if_then_else_ False _ no = no
 
-closed Nat : Type as
-        Z : Nat
-        S : Nat -> Nat
-
-closed Vect : forall (t:Type) . Nat -> t -> Type as
+closed Vect : forall t:Type . Nat -> t -> Type as
         Nil  : Vect Z t
-        _::_ : forall (n : Nat) . t -> Vect n t -> Vect (S n) t
+        _::_ : forall n:Nat . t -> Vect n t -> Vect (S n) t
 
 _+_ : t -> t -> t
         where t = Nat
@@ -75,13 +81,7 @@ Z     +   m = m
 _+_ Z     m = m
 _+_ (S n) m = S (n + m)
 
-id : forall (t:Type) . t -> t
-the : with (t:Type) -> t -> t
-
-id x = x
-the t x = id { t = t } x
-
-filter : forall (t:Type) . (t -> Bool) -> L.List t -> L.List t
+filter : forall t:Type . (t -> Bool) -> L.List t -> L.List t
 -- filter g (x :: xs) {t = tpe} =
 --         (if g x
 --                 then _::_ x
@@ -92,7 +92,7 @@ filter g (x L.:: xs) =
                 else id) filter g xs
 filter _ (L.Nil) = L.Nil
 
-filterVect : forall (t:Type, n:Nat) . (t -> Bool) -> Vect n t -> exists (m:Nat ; Vect m t)
+filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists (m:Nat ; Vect m t)
 filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
 filterVect _ (Nil    ) = Nil
 -- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
@@ -106,7 +106,7 @@ zeroes = filter $ \ Z -> True
 ones : L.List Nat -> L.List Nat
 ones = map S . zeroes
 
-firstZ : forall (n:Nat) Vect n Nat -> Nat
+firstZ : forall n:Nat . Vect n Nat -> Nat
 firstZ (Z :: xs) = Z
 firstZ (_ :: xs) = S (firstZ xs)
 -- firstZ Nil       = error "no Z in Vect"      -- no strings yet
