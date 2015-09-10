@@ -10,7 +10,6 @@ module Language.Angler.Parser.LP
         , Byte
 
         , throwError
-        , get, gets, modify, put
         , pushLP, popLP, peekLP
         -- , pushLexState, peekLexState, popLexState
         -- , pushContext, popContext

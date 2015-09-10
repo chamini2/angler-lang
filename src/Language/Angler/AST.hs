@@ -88,7 +88,7 @@ data Expression a
         { _var_str      :: String
         , _exp_annot    :: a
         }
-  | Value
+  | Lit
         { _val_lit      :: Literal a
         , _exp_annot    :: a
         }
@@ -175,6 +175,7 @@ makeLenses ''Identifier
 makeLenses ''Module
 makeLenses ''Import
 makeLenses ''BodyStmt
+makeLenses ''Where
 makeLenses ''Expression
 makeLenses ''TypeDecl
 makeLenses ''Argument
@@ -288,7 +289,7 @@ instance PrettyShow f => PrettyShow (Where a f) where
 instance PrettyShow (Expression a) where
         pshow expr = case expr of
                 Var str _           -> string "«" >> string str >> string "»"
-                Value lit _         -> pshow lit
+                Lit lit _           -> pshow lit
                 Application exprs _ -> pshows' " " exprs
                 Lambda args _       -> string "\\ " >> pshows' " " args >> string "->"
                 Forall typs _       -> string "forall (" >> pshows' ", " typs >> string ")"

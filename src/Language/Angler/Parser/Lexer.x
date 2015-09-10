@@ -8,7 +8,15 @@
 {
 {-# OPTIONS_GHC -funbox-strict-fields -w #-}
 
-module Language.Angler.Parser.Lexer (lexer, lexTokens, runLP, execLP, evalLP) where
+module Language.Angler.Parser.Lexer
+        ( lexer
+        -- , lexToken
+        , lexTokens
+
+        , runLP
+        , execLP
+        , evalLP
+        ) where
 
 import           Language.Angler.Error
 import           Language.Angler.SrcLoc
@@ -27,7 +35,7 @@ import qualified Data.Map.Strict               as Map (lookup, fromList)
 import           Data.Word                     (Word8)
 
 
-import           Prelude                       hiding (id, lookup, span)
+import           Prelude                       hiding (lookup, span)
 
 }
 
@@ -40,7 +48,7 @@ $white_no_nl  = $whitechar # \n
 
 $digit        = 0 - 9
 $hexdigit     = [ $digit a - f A - F ]
-$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \< \= \> \^ \| \~ \? \` \[ \] \: \\ \. ]
+$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \\ \< \= \> \^ \| \~ \? \` \[ \] \: \. ]
 $small        = a - z
 $large        = A - Z
 $alpha        = [ $small $large ]
@@ -113,7 +121,6 @@ $white_no_nl+   ;
 
         \;      { token TkSemicolon }
         \,      { token TkComma     }
-
         -- \@      { token TkAt        }
 
         \(      { token TkLParen }
@@ -122,6 +129,10 @@ $white_no_nl+   ;
         \}      { token TkRCurly }
 
         \_      { token TkUnderscore }
+
+        -- errors
+        -- ''      { lexError EmptyChar }
+        -- '@ident { lexError QuoteStartIdent }
 }
 
 <layout> {
@@ -157,7 +168,7 @@ reserved = Map.fromList
         -- symbols
         , (":"        , TkColon     )
         -- , (";"        , TkSemicolon )
-        -- , ("."        , TkDot       )
+        , ("."        , TkDot       )
         , ("->"       , TkArrow     )
         , ("\\"       , TkBackslash )
         , ("="        , TkEquals    )
@@ -203,11 +214,11 @@ type Action = LPAction (Located Token)
 -- LPState's manipulation
 
 getInput :: LP AlexInput
-getInput = get >>= \s -> let l  = view lp_loc s
-                             c  = view lp_last_char s
-                             bs = view lp_bytes s
-                             b  = view lp_buffer s
-                         in return (l, c, bs, b)
+getInput = use id >>= \s -> let l  = view lp_loc s
+                                c  = view lp_last_char s
+                                bs = view lp_bytes s
+                                b  = view lp_buffer s
+                            in return (l, c, bs, b)
 
 setInput :: AlexInput -> LP ()
 setInput (loc,c,bs,inp) = do
@@ -232,7 +243,7 @@ token tk span _buf _len = return (Loc span tk)
 
 tokenStore :: (String -> Token) -> Action
 tokenStore fnTk span buf len = let tk = fnTk (take len buf)
-                              in return (Loc span tk)
+                               in return (Loc span tk)
 
 push :: Int -> Action
 push ls _span _buf _len = pushLP lp_lex_state ls >> lexToken
@@ -242,11 +253,12 @@ pop _span _buf _len = popLP lp_lex_state >> lexToken
 
 -- from GHC's lexer
 identifier :: (String -> Token) -> Action
-identifier idTk span buf len = let str = take len buf in
-        case Map.lookup str reserved of
-                Just tk -> maybeLayout tk >> return (Loc span tk)
-                Nothing -> return (Loc span (idTk str))
+identifier idTk span buf len = case Map.lookup str reserved of
+        Just tk -> maybeLayout tk >> return (Loc span tk)
+        Nothing -> return (Loc span (idTk str))
     where
+        str :: String
+        str = take len buf
         -- certain keywords put us in the "layout" state, where we might
         -- add an opening curly brace.
         maybeLayout :: Token -> LP ()
@@ -293,6 +305,7 @@ processLayout span _buf _len = do
 runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
 runLP input loc = runIdentity . runExceptT . flip runStateT initialST
     where
+        initialST :: LPState
         initialST = LPState
                 { _lp_buffer    = input
                 , _lp_last_char = '\n'
