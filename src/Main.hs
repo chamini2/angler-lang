@@ -7,6 +7,7 @@ import           Language.Angler.SrcLoc        (SrcLoc(..))
 
 import           Control.Lens
 import           Control.Monad                 (unless, when)
+import           Data.Default                  (Default(..))
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
 import           System.Environment            (getArgs)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
@@ -29,7 +30,7 @@ main = do
 
         unless (null optErrors) $ ioError (userError (concat optErrors))
 
-        options <- foldl (>>=) (return initialOptions) optActions
+        options <- foldl (>>=) (return def) optActions
 
         (handle, filepath) <- case nonOptions of
                 f : _ -> openFile f ReadMode >>= \h -> return (h, f)

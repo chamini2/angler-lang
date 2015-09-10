@@ -37,16 +37,18 @@ executable angler
   build-depends:          base >=4.8 && <4.9
                         , array
                                 -- alex
-                        , utf8-string
-                                -- Codec.Binary.String.UTF8
                         , containers
                                 -- alex, Data.Sequence
+                        , data-default
+                                -- Data.Default
                         , directory
                                 -- System.Directory
                         , lens
                                 -- Control.Lens
                         , mtl
                                 -- MonadTrans
+                        , utf8-string
+                                -- Codec.Binary.String.UTF8
   default-language:     Haskell2010
   -- ghc-options:          -Wall -Werror
   ghc-options:          -Wall

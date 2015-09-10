@@ -2,6 +2,7 @@
 module Language.Angler.Options where
 
 import           Control.Lens
+import           Data.Default                  (Default(..))
 import           System.Console.GetOpt         (ArgDescr(..), OptDescr(..),
                                                 usageInfo)
 import           System.Exit                   (exitWith, ExitCode(..))
@@ -23,8 +24,8 @@ data Options
 
 makeLenses ''Options
 
-initialOptions :: Options
-initialOptions = Options
+instance Default Options where
+    def = Options
         { _opt_warnings = True
         , _opt_tokens   = False
         , _opt_ast      = False

@@ -17,8 +17,6 @@ import           Control.Lens
 import           Data.Sequence                (Seq(..))
 import           Data.Foldable                (toList)
 
-import           Debug.Trace                  (trace, traceShow)
-
 }
 
 %monad { LP } -- { >>= } { return }
@@ -40,7 +38,6 @@ import           Debug.Trace                  (trace, traceShow)
 
 %token
         ident                   { Loc _ (TkIdentifier _) }
-        -- imprt                   { Loc _ (TkImportPath _) }
         qualf                   { Loc _ (TkQualified  _) }
 
         int                     { Loc _ (TkInteger _)    }
@@ -62,11 +59,12 @@ import           Debug.Trace                  (trace, traceShow)
         'exists'                { Loc _ TkExists         }
         'with'                  { Loc _ TkWith           }
         -- 'on'                    { Loc _ TkOn             }
+        -- 'behaviour'             { Loc _ TkBehaviour      }
         -- 'is'                    { Loc _ TkIs             }
 
         ':'                     { Loc _ TkColon          }
         ';'                     { Loc _ TkSemicolon      }
-        -- '.'                     { Loc _ TkDot            }
+        '.'                     { Loc _ TkDot            }
         '->'                    { Loc _ TkArrow          }
         '\ '                    { Loc _ TkBackslash      }
         '='                     { Loc _ TkEquals         }
@@ -113,15 +111,19 @@ ListSep1(r,sep)
 --------------------------------------------------------------------------------
 -- identifiers
 Id :: { IdentifierSpan }
-    : ident             { Identifier (tkId ($1^.loc_insd)) ($1^.loc_span) }
+    : ident             { Identifier ($1^.loc_insd.to tkId) ($1^.loc_span) }
 
 QId :: { IdentifierSpan }
     : qualf             { Identifier (tkId ($1^.loc_insd)) ($1^.loc_span) }
     | Id                { $1 }
-    -- | ImportPath        { $1 }
 
--- ImportPath :: { Qualified }
---     : imprt             { let Loc l (TkImportPath str) = $1 in Loc l str }
+ReservedSymbols :: { IdentifierSpan }
+    : ':'               { Identifier ":"  ($1^.loc_span) }
+    | '.'               { Identifier "."  ($1^.loc_span) }
+    | '->'              { Identifier "->" ($1^.loc_span) }
+    -- | '\ '              { Identifier "\\" ($1^.loc_span) }
+    | '='               { Identifier "="  ($1^.loc_span) }
+    -- | ','               { Identifier ","  ($1^.loc_span) }
 
 ----------------------------------------
 -- modules
@@ -266,6 +268,11 @@ Body :: { BodySpan }
 {
 
 parseError :: Located Token -> LP a
-parseError (Loc l tk) = throwError (Loc l (ParseError (PErr (show tk))))
+-- parseError (Loc l tk) = throwError (Loc l (ParseError (PErr (show tk))))
+parseError (Loc l tk) = case tk of
+        -- TkVLCurly    -> lexer parseError
+        -- TkVRCurly    -> lexer parseError
+        -- TkVSemicolon -> lexer parseError
+        _ -> throwError (Loc l (ParseError (PErr (show tk))))
 
 }
