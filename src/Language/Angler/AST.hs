@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Language.Angler.AST where
 
 import           Language.Angler.SrcLoc
@@ -22,7 +23,8 @@ type IdentifierSpan = Identifier SrcSpan
 
 data Module a
   = Module
-        { _mod_exports  :: Maybe (Seq (Identifier a))   -- 'Nothing' means to export everything
+        { _mod_name     :: String
+        , _mod_exports  :: Maybe (Seq (Identifier a))   -- 'Nothing' means to export everything
         , _mod_imports  :: Seq (Import a)
         , _mod_body     :: Body a
         , _mod_annot    :: a
@@ -44,44 +46,46 @@ type Body a = Seq (BodyStmt a)
 type BodySpan = Body SrcSpan
 
 data BodyStmt a
-  = FunctionDecl
-        { _fdec_id      :: Identifier a
-        , _fdec_type    :: Where a (Expression a)
-        , _stm_annot    :: a
-        }
-  | OpenType
+  = OpenType
         { _open_id      :: Identifier a
-        , _open_type    :: Where a (Expression a)
-        , _open_cons    :: Maybe (Seq (TypeDecl a))
+        , _open_sign    :: Where Expression a
+        , _open_cnstrc  :: Maybe (Seq (TypeBind a))
         , _stm_annot    :: a
         }
   | ReopenType
         { _rpen_id      :: Identifier a
-        , _rpen_cons    :: Seq (TypeDecl a)
+        , _rpen_cnstrc  :: Seq (TypeBind a)
         , _stm_annot    :: a
         }
   | ClosedType
         { _clsd_id      :: Identifier a
-        , _clsd_type    :: Where a (Expression a)
-        , _clsd_cons    :: Seq (TypeDecl a)
+        , _clsd_type    :: Where Expression a
+        , _clsd_cnstrc  :: Seq (TypeBind a)
+        , _stm_annot    :: a
+        }
+  | FunctionDecl
+        { _fdec_id      :: Identifier a
+        , _fdec_type    :: Where Expression a
         , _stm_annot    :: a
         }
   | FunctionDef
         { _fdef_args    :: Seq (Argument a)
-        , _fdef_expr    :: Where a (Expression a)
+        , _fdef_expr    :: Where Expression a
         , _stm_annot    :: a
         }
   deriving Show
 type BodyStmtSpan = BodyStmt SrcSpan
 
-data Where a f
+data Where f a
   = Where
-        { _whre_body    :: Body a
-        , _whre_insd    :: f
+        { _whre_insd    :: f a
+        , _whre_body    :: Body a
         , _whre_annot   :: a
         }
+  | NoWhere
+        { _whre_insd    :: f a }
   deriving Show
-type WhereSpan f = Where SrcSpan f
+type WhereSpan f = Where f SrcSpan
 
 data Expression a
   = Var
@@ -92,25 +96,28 @@ data Expression a
         { _val_lit      :: Literal a
         , _exp_annot    :: a
         }
-  | Application
-        { _app_exprs    :: Seq (Expression a)
+  | Apply
+        { _app_func     :: Expression a
+        , _app_over     :: Expression a
         , _exp_annot    :: a
         }
   | Lambda
-        { _lam_args     :: Seq (Argument a)
+        { _lam_arg      :: Argument a
+        , _lam_expr     :: Expression a
         , _exp_annot    :: a
         }
   | Forall
-        { _fall_typs    :: Seq (TypeDecl a)
+        { _fall_typs    :: Seq (TypeBind a)
+        , _fall_expr    :: Expression a
         , _exp_annot    :: a
         }
   | Exists
-        { _exst_type    :: TypeDecl a
+        { _exst_type    :: TypeBind a
         , _exst_expr    :: Expression a
         , _exp_annot    :: a
         }
-  | With
-        { _with_type    :: TypeDecl a
+  | Select
+        { _with_type    :: TypeBind a
         , _exp_annot    :: a
         }
   | ImplicitExpr
@@ -120,14 +127,14 @@ data Expression a
   deriving Show
 type ExpressionSpan = Expression SrcSpan
 
-data TypeDecl a
-  = TypeDecl
+data TypeBind a
+  = TypeBind
         { _typ_id       :: Identifier a
-        , _typ_type     :: Where a (Expression a)
+        , _typ_type     :: Where Expression a
         , _typ_annot    :: a
         }
   deriving Show
-type TypeDeclSpan = TypeDecl SrcSpan
+type TypeBindSpan = TypeBind SrcSpan
 
 data Argument a
   = Binding
@@ -177,7 +184,7 @@ makeLenses ''Import
 makeLenses ''BodyStmt
 makeLenses ''Where
 makeLenses ''Expression
-makeLenses ''TypeDecl
+makeLenses ''TypeBind
 makeLenses ''Argument
 makeLenses ''ImplicitBinding
 makeLenses ''Literal
@@ -236,7 +243,7 @@ lower = ps_indent -= 1
 ----------------------------------------
 
 instance PrettyShow (Module a) where
-        pshow (Module mexprts imprts bdy _) = do
+        pshow (Module _ mexprts imprts bdy _) = do
                 when (isJust mexprts) $ do
                         let Just exprts = mexprts
                         string "export (" >> string (showExports exprts) >> string ")"
@@ -275,35 +282,39 @@ instance PrettyShow (BodyStmt a) where
                         string " = " >> pshow expr
                 _ -> string "(re|)open"
 
-instance PrettyShow f => PrettyShow (Where a f) where
-        pshow (Where bdy a _) = do
-                pshow a
-                unless (null bdy) $ do
+instance PrettyShow (f a) => PrettyShow (Where f a) where
+        pshow whre = case whre of
+                Where a bdy _ -> do
+                        pshow a
+
                         raise >> line
                         string "where"
 
                         raise >> line
                         pshows line bdy
                         lower >> lower
+                NoWhere a -> pshow a
+
 
 instance PrettyShow (Expression a) where
         pshow expr = case expr of
                 Var str _           -> string "«" >> string str >> string "»"
                 Lit lit _           -> pshow lit
-                Application exprs _ -> pshows' " " exprs
-                Lambda args _       -> string "\\ " >> pshows' " " args >> string "->"
-                Forall typs _       -> string "forall (" >> pshows' ", " typs >> string ")"
+                Apply fun ovr _     -> pshow fun >> string " (" >> pshow ovr >> string ")"
+                Lambda arg expr' _  -> string "\\ " >> pshow arg >> string "->" >> pshow expr'
+                Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string "."
+                                                        >> pshow expr'
                 Exists typ expr' _  -> string "exists (" >> pshow typ >> string ";"
                                                        >> pshow expr' >> string ")"
-                With typ _          -> string "with (" >> pshow typ >> string ")"
+                Select typ _        -> string "select (" >> pshow typ >> string ")"
                 ImplicitExpr imps _ -> string "{" >> pshows' " " imps >> string "}"
             where
                 pshows' :: (PrettyShow a, Foldable f) => String -> f a -> PrettyShowMonad
                 pshows' = pshows . string
 
 
-instance PrettyShow (TypeDecl a) where
-        pshow (TypeDecl idn typ _) = string (view idn_str idn) >> string " : " >> pshow typ
+instance PrettyShow (TypeBind a) where
+        pshow (TypeBind idn typ _) = string (view idn_str idn) >> string " : " >> pshow typ
 
 instance PrettyShow (Argument a) where
         pshow arg = case arg of

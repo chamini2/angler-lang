@@ -3,12 +3,12 @@ export (Nat, filter)
 import Data.List as L (List, _::_, Nil)
 
 id : forall t:Type . t -> t
-the : with t:Type -> t -> t
+the : (select t:Type) -> t -> t
 
 id x = x
 the t x = id { t = t } x
 
-_._ : forall a:Type, b:Type -> C, c:Type . (b -> c) -> (a -> b) -> a -> c
+_._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
 (f . g) x = f (g x)
 
 -- _$_ (infix 0) : forall a:Type, b:Type . (a -> b) -> a -> b
@@ -16,7 +16,7 @@ _._ : forall a:Type, b:Type -> C, c:Type . (b -> c) -> (a -> b) -> a -> c
 _$_ : forall a:Type, b:Type . (a -> b) -> a -> b
 f $ x = f x
 
-closed Nat : Type as
+closed Nat : Type with
         Z : Nat
         S : Nat -> Nat
 
@@ -38,38 +38,41 @@ closed Nat : Type as
 String : Type
 String = L.List Char
 
-closed Bool : Type as
+closed Bool : Type with
         True  : Bool
         False : Bool
 
 -- Bool = Nat           -- error: Bool is data type
 -- True = False         -- error: True is constructor
 
-reopen Type as
+reopen Type with
         Tipo : Type -> Type
 
-open Currency : Type as
+open Currency : Type with
         USD : Nat -> Currency
         EUR : Nat -> Currency
 
-reopen Currency as
+reopen Currency with
         VEF : Nat -> Currency
         YEN : Nat -> Currency
 
-{-closed Bool : Type as
-        closed True  : Bool as
+{-closed Bool : Type with
+        closed True  : Bool with
                 Yes  : True
                 Yeap : True
-        closed False : Bool as
+        closed False : Bool with
                 No : False
                 Nope : False
         Bool = Char -}
+
+-- macros higienicos
+-- if True then if False then 1 else 2 else 3
 
 if_then_else_ : forall t:Type . Bool -> t -> t -> t
 if_then_else_ True yes _ = yes
 if_then_else_ False _ no = no
 
-closed Vect : forall t:Type . Nat -> t -> Type as
+closed Vect : forall t:Type . Nat -> t -> Type with
         Nil  : Vect Z t
         _::_ : forall n:Nat . t -> Vect n t -> Vect (S n) t
 
