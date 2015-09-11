@@ -5,7 +5,7 @@ module Language.Angler.AST where
 import           Language.Angler.SrcLoc
 
 import           Control.Lens
-import           Control.Monad           (unless, when)
+import           Control.Monad           (when)
 import           Control.Monad.State     (State, execState)
 import           Data.Sequence           (Seq)
 import           Data.Maybe              (isJust)
@@ -48,7 +48,7 @@ type BodySpan = Body SrcSpan
 data BodyStmt a
   = OpenType
         { _open_id      :: Identifier a
-        , _open_sign    :: Where Expression a
+        , _open_type    :: ExprWhere a
         , _open_cnstrc  :: Maybe (Seq (TypeBind a))
         , _stm_annot    :: a
         }
@@ -59,18 +59,18 @@ data BodyStmt a
         }
   | ClosedType
         { _clsd_id      :: Identifier a
-        , _clsd_type    :: Where Expression a
+        , _clsd_type    :: ExprWhere a
         , _clsd_cnstrc  :: Seq (TypeBind a)
         , _stm_annot    :: a
         }
   | FunctionDecl
         { _fdec_id      :: Identifier a
-        , _fdec_type    :: Where Expression a
+        , _fdec_type    :: ExprWhere a
         , _stm_annot    :: a
         }
   | FunctionDef
         { _fdef_args    :: Seq (Argument a)
-        , _fdef_expr    :: Where Expression a
+        , _fdef_expr    :: ExprWhere a
         , _stm_annot    :: a
         }
   deriving Show
@@ -79,13 +79,13 @@ type BodyStmtSpan = BodyStmt SrcSpan
 data Where f a
   = Where
         { _whre_insd    :: f a
-        , _whre_body    :: Body a
+        , _whre_body    :: Maybe (Body a)
         , _whre_annot   :: a
         }
-  | NoWhere
-        { _whre_insd    :: f a }
   deriving Show
-type WhereSpan f = Where f SrcSpan
+type WhereSpan f   = Where f SrcSpan
+type ExprWhere a   = Where Expression a
+type ExprWhereSpan = Where Expression SrcSpan
 
 data Expression a
   = Var
@@ -97,7 +97,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | Apply
-        { _app_func     :: Expression a
+        { _app_fun      :: Expression a
         , _app_over     :: Expression a
         , _exp_annot    :: a
         }
@@ -106,6 +106,11 @@ data Expression a
         , _lam_expr     :: Expression a
         , _exp_annot    :: a
         }
+  -- | Let
+  --       { _let_body     :: Body a
+  --       , _let_expr     :: Expression a
+  --       , _exp_annot    :: a
+  --       }
   | Forall
         { _fall_typs    :: Seq (TypeBind a)
         , _fall_expr    :: Expression a
@@ -130,7 +135,7 @@ type ExpressionSpan = Expression SrcSpan
 data TypeBind a
   = TypeBind
         { _typ_id       :: Identifier a
-        , _typ_type     :: Where Expression a
+        , _typ_type     :: ExprWhere a
         , _typ_annot    :: a
         }
   deriving Show
@@ -144,7 +149,7 @@ data Argument a
   | DontCare
         { _arg_annot    :: a }
   | ParenthesizedBinding
-        { _ptrn_expr    :: Seq (Argument a)
+        { _paren_expr   :: Seq (Argument a)
         , _arg_annot    :: a
         }
   deriving Show
@@ -209,14 +214,14 @@ prettyShow :: PrettyShow a => a -> String
 prettyShow = prettyShowIndent 0 "    "
 
 prettyShowIndent :: PrettyShow a => Indentation -> String -> a -> String
-prettyShowIndent n str = showLines . _ps_lines . flip execState initST . pshow
+prettyShowIndent n str = showLines . _ps_lines . flip execState initialST . pshow
     where
         showLines :: [(Indentation, String)] -> String
         showLines = concatMap (\(ind, s) -> tabs ind ++ s ++ "\n") . reverse
         tabs :: Indentation -> String
         tabs ind = concat (replicate ind str)
-        initST :: PrettyShowState
-        initST = PrettyShowState n [(n, "")]
+        initialST :: PrettyShowState
+        initialST = PrettyShowState n [(n, "")]
 
 ----------------------------------------
 
@@ -228,8 +233,8 @@ pshows act xs = case toList xs of
 string :: String -> PrettyShowMonad
 string str = ps_lines._head._2 %= (++ str)
 
-lstring :: Located String -> PrettyShowMonad
-lstring = string . view loc_insd
+-- lstring :: Lens' a String -> a -> PrettyShowMonad
+lstring lns = string . view lns
 
 line :: PrettyShowMonad
 line = use ps_indent >>= \n -> ps_lines %= cons (n, "")
@@ -252,61 +257,75 @@ instance PrettyShow (Module a) where
                 pshows line imprts >> line >> line
                 pshows (line >> line) bdy
             where
-                -- showExports :: Foldable f => f (Identifier a) -> String
-                showExports = intercalate ", " . toListOf (each.idn_str)
+                showExports :: Traversable f => f (Identifier a) -> String
+                showExports = intercalate ", " . toListOf (traverse.idn_str)
 
 instance PrettyShow (Import a) where
         pshow (Import path mas mspec _) = do
                 string "import " >> string path
                 when (isJust mas) $ do
                         let Just as = mas
-                        string (" as " ++ view idn_str as)
+                        string " as " >> lstring idn_str as
                 when (isJust mspec) $ do
                         let Just spec = mspec
-                        string "(" >> string (showSpecs spec) >> string ")"
+                        string " (" >> string (showSpecs spec) >> string ")"
             where
-                -- showSpecs :: Foldable f => f (Identifier a) -> String
-                showSpecs = intercalate ", " . toListOf (each.idn_str)
+                showSpecs :: Traversable f => f (Identifier a) -> String
+                showSpecs = intercalate ", " . toListOf (traverse.idn_str)
 
 instance PrettyShow (BodyStmt a) where
         pshow bdst = case bdst of
-                FunctionDecl idn typ _ ->
-                        string (view idn_str idn) >> string " : " >> pshow typ
-                -- OpenType
-                -- ReopenType
-                ClosedType idn typ cns _ -> do
-                        string (view idn_str idn) >> string " : " >> pshow typ >> string " as "
+                OpenType idn typ mcns _ -> do
+                        string "open " >> lstring idn_str idn
+                        string " : " >> pshow typ
+                        when (isJust mcns) $ do
+                                let Just cns = mcns
+                                string " with"
+                                raise >> line >> pshows line cns >> lower
+                ReopenType idn cns _ -> do
+                        string "reopen " >> lstring idn_str idn >> string " with"
                         raise >> line >> pshows line cns >> lower
+                ClosedType idn typ cns _ -> do
+                        string "closed " >> lstring idn_str idn
+                        string " : " >> pshow typ >> string " with"
+                        raise >> line >> pshows line cns >> lower
+                FunctionDecl idn typ _ ->
+                        lstring idn_str idn >> string " : " >> pshow typ
                 FunctionDef args expr _ -> do
                         pshows (string " ") args
                         string " = " >> pshow expr
-                _ -> string "(re|)open"
 
 instance PrettyShow (f a) => PrettyShow (Where f a) where
         pshow whre = case whre of
-                Where a bdy _ -> do
+                Where a mbdy _ -> do
                         pshow a
+                        when (isJust mbdy) $ do
+                                let Just bdy = mbdy
+                                raise >> line
+                                string "where"
 
-                        raise >> line
-                        string "where"
-
-                        raise >> line
-                        pshows line bdy
-                        lower >> lower
-                NoWhere a -> pshow a
-
+                                raise >> line
+                                pshows line bdy
+                                lower >> lower
 
 instance PrettyShow (Expression a) where
         pshow expr = case expr of
                 Var str _           -> string "«" >> string str >> string "»"
                 Lit lit _           -> pshow lit
-                Apply fun ovr _     -> pshow fun >> string " (" >> pshow ovr >> string ")"
-                Lambda arg expr' _  -> string "\\ " >> pshow arg >> string "->" >> pshow expr'
-                Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string "."
+                -- Apply fun ovr _     -> string "(" >> pshow fun >> string ")" >>
+                --                        string " (" >> pshow ovr >> string ")"
+                Apply fun ovr _     -> do
+                        case fun of
+                                Var {} -> pshow fun
+                                Lit {} -> pshow fun
+                                _      -> string "(" >> pshow fun >> string ")"
+                        string " (" >> pshow ovr >> string ")"
+                Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
+                Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
                                                         >> pshow expr'
                 Exists typ expr' _  -> string "exists (" >> pshow typ >> string ";"
-                                                       >> pshow expr' >> string ")"
-                Select typ _        -> string "select (" >> pshow typ >> string ")"
+                                                         >> pshow expr' >> string ")"
+                Select typ _        -> string "select " >> pshow typ
                 ImplicitExpr imps _ -> string "{" >> pshows' " " imps >> string "}"
             where
                 pshows' :: (PrettyShow a, Foldable f) => String -> f a -> PrettyShowMonad
@@ -314,16 +333,16 @@ instance PrettyShow (Expression a) where
 
 
 instance PrettyShow (TypeBind a) where
-        pshow (TypeBind idn typ _) = string (view idn_str idn) >> string " : " >> pshow typ
+        pshow (TypeBind idn typ _) = lstring idn_str idn >> string " : " >> pshow typ
 
 instance PrettyShow (Argument a) where
         pshow arg = case arg of
-                Binding idn _               -> string (view idn_str idn)
+                Binding idn _               -> lstring idn_str idn
                 DontCare _                  -> string "_"
                 ParenthesizedBinding args _ -> string "(" >> pshows (string " ") args >> string ")"
 
 instance PrettyShow (ImplicitBinding a) where
-        pshow (ImplicitBind idn expr _) = string (view idn_str idn) >> string " = " >> pshow expr
+        pshow (ImplicitBind idn expr _) = lstring idn_str idn >> string " = " >> pshow expr
 
 instance PrettyShow (Literal a) where
         pshow lit = case lit of
