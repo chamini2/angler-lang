@@ -1,6 +1,7 @@
 export (Nat, filter)
 
-import Data.List as L (List, _::_, Nil)
+import Data.List (List)
+import Data.List as L (_::_, Nil)
 
 id : forall t:Type . t -> t
 the : (select t:Type) -> t -> t
@@ -36,7 +37,7 @@ closed Nat : Type with
 -- USD = EUR
 
 String : Type
-String = L.List Char
+String = List Char
 
 closed Bool : Type with
         True  : Bool
@@ -48,13 +49,14 @@ closed Bool : Type with
 reopen Type with
         Tipo : Type -> Type
 
-open Currency : Type with
-        USD : Nat -> Currency
-        EUR : Nat -> Currency
+open Count : Type with
+        One : Count
+
+open Currency : Type
 
 reopen Currency with
-        VEF : Nat -> Currency
-        YEN : Nat -> Currency
+        USD : Nat -> Currency
+        EUR : Nat -> Currency
 
 {-closed Bool : Type with
         closed True  : Bool with
@@ -84,11 +86,11 @@ Z     +   m = m
 _+_ Z     m = m
 _+_ (S n) m = S (n + m)
 
-filter : forall t:Type . (t -> Bool) -> L.List t -> L.List t
+filter : forall t:Type . (t -> Bool) -> List t -> List t
 -- filter g (x :: xs) {t = tpe} =
 --         (if g x
 --                 then _::_ x
---                 else the (L.List tpe)) filter g xs
+--                 else the (List tpe)) filter g xs
 filter g (x L.:: xs) =
         (if g x
                 then _::_ x
@@ -103,10 +105,13 @@ filterVect _ (Nil    ) = Nil
 
 -- map : forall
 
-zeroes : L.List Nat -> L.List Nat
-zeroes = filter $ \ Z -> True
+const : forall a:Type, b:Type . a -> b -> b
+const = \ _ x -> x
 
-ones : L.List Nat -> L.List Nat
+zeroes : List Nat -> List Nat
+zeroes = filter $ \Z -> True
+
+ones : List Nat -> List Nat
 ones = map S . zeroes
 
 firstZ : forall n:Nat . Vect n Nat -> Nat

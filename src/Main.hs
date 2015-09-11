@@ -3,7 +3,6 @@ module Main where
 import           Language.Angler.AST           (prettyShow)
 import           Language.Angler.Parser.Lexer  (evalLP)
 import           Language.Angler.Parser.Parser (parseModule)
-import           Language.Angler.SrcLoc        (SrcLoc(..))
 
 import           Control.Lens
 import           Control.Monad                 (unless, when)
