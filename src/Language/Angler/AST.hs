@@ -312,8 +312,6 @@ instance PrettyShow (Expression a) where
         pshow expr = case expr of
                 Var str _           -> string "«" >> string str >> string "»"
                 Lit lit _           -> pshow lit
-                -- Apply fun ovr _     -> string "(" >> pshow fun >> string ")" >>
-                --                        string " (" >> pshow ovr >> string ")"
                 Apply fun ovr _     -> do
                         case fun of
                                 Var {} -> pshow fun

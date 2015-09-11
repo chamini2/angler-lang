@@ -21,7 +21,7 @@ import           Language.Angler.Error
 
 import           Control.Lens
 import           Control.Monad.Except   (ExceptT(..), throwError)
-import           Control.Monad.State    (StateT(..), get, gets, modify, put)
+import           Control.Monad.State    (StateT(..))
 import           Data.Maybe             (fromJust)
 import           Data.Word              (Word8)
 

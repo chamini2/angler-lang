@@ -1,8 +1,6 @@
 {
 module Language.Angler.Parser.Parser
-        ( parseModule
-        -- ,
-        ) where
+        ( parseModule ) where
 
 import           Language.Angler.Parser.Lexer (lexer)
 
@@ -25,17 +23,8 @@ import           Data.Maybe                   (isJust, fromJust)
 %tokentype { (Located Token) }
 %error { parseError }
 
--- Exported parsers
+-- Exported parser
 %name parseModule Module
--- %name parseImport importdecl
--- %name parseStatement stmt
--- %name parseDeclaration topdecl
--- %name parseExpression exp
--- %name parsePattern pat
--- %name parseTypeSignature sigdecl
--- %name parseStmt   maybe_stmt
--- %name parseIdentifier  identifier
--- %name parseType ctype
 
 %token
         ident                   { Loc _ (TkIdentifier _) }
@@ -82,129 +71,132 @@ import           Data.Maybe                   (isJust, fromJust)
 
 -- for general use
 Maybe(r) :: { Maybe r }
-    : {- empty -}       { Nothing }
-    | r                 { Just $1 }
+    : {- empty -}   { Nothing }
+    | r             { Just $1 }
 
 MaybeEnd(r,e) :: { Maybe r }
-    : {- empty -}       { Nothing }
-    | r e               { Just $1 }
+    : {- empty -}   { Nothing }
+    | r e           { Just $1 }
 
 List0(r) :: { Seq r }
-    : {- empty -}       { empty }               -- like []
-    | List1(r)          { $1    }
+    : {- empty -}   { empty }               -- like []
+    | List1(r)      { $1    }
 
 List1(r) :: { Seq r }
-    : r                 { pure $1  }            -- like [$1]
-    | List1(r) r        { $1 |> $2 }            -- like $1 ++ [$2]
+    : r             { pure $1  }            -- like [$1]
+    | List1(r) r    { $1 |> $2 }            -- like $1 ++ [$2]
 
 ListSep0(r,sep) :: { Seq r }
-    : {- empty -}       { empty }               -- like []
-    | ListSep1(r,sep)   { $1    }
+    : {- empty -}   { empty }               -- like []
+    | ListSep1(r,sep)
+                    { $1    }
 
 ListSepEnd0(r,sep,e) :: { Seq r }
-    : {- empty -}       { empty }               -- like []
-    | ListSep1(r,sep) e { $1    }
+    : {- empty -}   { empty }               -- like []
+    | ListSep1(r,sep) e
+                    { $1    }
 
 ListSep1(r,sep) :: { Seq r }
-    : r                 { pure $1  }            -- like [$1]
+    : r             { pure $1  }            -- like [$1]
     | ListSep1(r,sep) sep r
-                        { $1 |> $3 }            -- like $1 ++ [$3]
+                    { $1 |> $3 }            -- like $1 ++ [$3]
 
 --------------------------------------------------------------------------------
 -- identifiers
 Id :: { IdentifierSpan }
-    : ident             { Identifier ($1^.loc_insd.to tkId) ($1^.loc_span) }
+    : ident
+                    { Identifier ($1^.loc_insd.to tkId) ($1^.loc_span) }
 
 QId :: { IdentifierSpan }
-    : qualf             { Identifier (tkId ($1^.loc_insd)) ($1^.loc_span) }
-    | Id                { $1 }
+    : qualf         { Identifier ($1^.loc_insd.to tkId) ($1^.loc_span) }
+    | Id            { $1 }
 
 DotId :: { IdentifierSpan }
-    : '.'               { Identifier "." $1 }
+    : '.'           { Identifier "."  $1 }
 
 ArrowId :: { IdentifierSpan }
-    : '->'              { Identifier "->" $1 }
+    : '->'          { Identifier "->" $1 }
 
 EqualsId :: { IdentifierSpan }
-    : '='               { Identifier "=" $1 }
+    : '='           { Identifier "="  $1 }
 
 ----------------------------------------
--- modules
+-- module
 Module :: { ModuleSpan }
     : '{^' Top Body '^}'
-                        { Module "" (fst $2) (snd $2) $3
-                            (srcSpanSpan $1 $4) }
+                    { Module "" (fst $2) (snd $2) $3 (srcSpanSpan $1 $4) }
 
 ----------------------------------------
 -- export and imports
 Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
-    : MaybeEnd(Export, '^;')
-        ListSepEnd0(Import, '^;', '^;')
-                        { ($1, $2) }
+    : MaybeEnd(Export, '^;') ListSepEnd0(Import, '^;', '^;')
+                    { ($1, $2) }
 
     Export :: { Seq IdentifierSpan }
         : 'export' '(' ListSep0(Id, ',') ')'
-                            { $3 }
+                        { $3 }
 
     Import :: { ImportSpan }
         : 'import' QId Maybe(ImportAs) Maybe(ImportSpecific)
-                            { Import ($2^.idn_str) $3 (fmap fst $4)
-                                (srcSpanSpan $1
-                                             (fromJust (msum
-                                                        -- get the farthest span
-                                                        [ fmap (^.idn_annot) $3
-                                                        , fmap snd           $4
-                                                        , Just ($2^.idn_annot)] ))) }
+                        { Import ($2^.idn_str) $3 (fmap fst $4)
+                            (srcSpanSpan $1
+                                (fromJust (msum
+                                    -- get the farthest span
+                                    [ fmap (^.idn_annot) $3
+                                    , fmap snd           $4
+                                    , Just ($2^.idn_annot)] )))
+                        }
 
         ImportAs :: { IdentifierSpan }
-            : 'as' QId          { $2 }
+            : 'as' QId      { $2 }
 
         ImportSpecific :: { (Seq IdentifierSpan, SrcSpan) }
             : '(' ListSep0(Id, ',') ')'
-                                { ($2, srcSpanSpan $1 $3) }
+                            { ($2, srcSpanSpan $1 $3) }
 
 ----------------------------------------
 -- declarations, definitions
 Body :: { BodySpan }
     : ListSep1(BodyStmt, '^;')
-                        { $1 }
+                    { $1 }
 
     BodyStmt :: { BodyStmtSpan }
         -- open type definition
             -- open Currency with
             --     USD : Nat -> Currency
         : 'open' Id ':' ExpressionWhere Maybe(Constructors)
-                            { OpenType $2 $4 (fmap fst $5)
-                                (srcSpanSpan $1
-                                    (maybe ($4^.whre_insd.exp_annot) snd $5)) }
+                        { OpenType $2 $4 ($5 & _Just %~ fst)
+                            (srcSpanSpan $1
+                                (maybe ($4^.whre_insd.exp_annot) snd $5)) }
 
         -- reopening type definition
             -- reopen Currency with
             --     EUR : Nat -> Currency
         | 'reopen' QId Constructors
-                            { ReopenType $2 (fst $3)
-                                (srcSpanSpan $1 (snd $3))}
+                        { ReopenType $2 (fst $3)
+                            (srcSpanSpan $1 (snd $3))}
 
         -- closed type definition
             -- closed Nat : Type with
             --     Z : Nat
             --     S : Nat -> Nat
         | 'closed' Id ':' ExpressionWhere Constructors
-                            { ClosedType $2 $4 (fst $5)
-                                (srcSpanSpan $1 (snd $5)) }
+                        { ClosedType $2 $4 (fst $5)
+                            (srcSpanSpan $1 (snd $5)) }
 
         -- function declaration
             -- _$_ : forall a:Type, b:Type . (a -> b) -> a -> b
         | Id ':' ExpressionWhere
-                            { FunctionDecl $1 $3
-                                (srcSpanSpan ($1^.idn_annot) ($3^.whre_insd.exp_annot)) }
+                        { FunctionDecl $1 $3
+                            (srcSpanSpan ($1^.idn_annot)
+                                         ($3^.whre_insd.exp_annot)) }
 
         -- function definition
             -- f $ x = f x
-        | List1(Argument(ArgId)) '=' ExpressionWhere
-                            { FunctionDef $1 $3
-                                (srcSpanSpan ($1^?!_head.arg_annot)
-                                             ($3^.whre_insd.exp_annot)) }
+        | List1(Argument(FunId)) '=' ExpressionWhere
+                        { FunctionDef $1 $3
+                            (srcSpanSpan ($1^?!_head.arg_annot)
+                                         ($3^.whre_insd.exp_annot)) }
         -- behaviour namespace
         -- | BehaviourNamespace
         -- behaviour declaration
@@ -216,7 +208,7 @@ Body :: { BodySpan }
 
         Where :: { (BodySpan, SrcSpan) }
             : 'where' '{^' Body '^}'    -- change Body to only functions
-                                { ($3, srcSpanSpan $1 $4) }
+                            { ($3, srcSpanSpan $1 $4) }
 
         Constructors :: { (Seq TypeBindSpan, SrcSpan) }
             : 'with'
@@ -224,96 +216,98 @@ Body :: { BodySpan }
                             { ($3, srcSpanSpan $1 $4) }
 
         Argument(argid) :: { ArgumentSpan }
-            : '_'               { DontCare $1 }
-            | argid             { Binding $1 ($1^.idn_annot) }
+            : '_'           { DontCare $1 }
+            | argid         { Binding $1 ($1^.idn_annot) }
             | '(' List1(Argument(ExpId)) ')'
-                                { ParenthesizedBinding $2 (srcSpanSpan $1 $3) }
+                            { ParenthesizedBinding $2 (srcSpanSpan $1 $3) }
 
-        ArgId :: { IdentifierSpan }
-            : QId               { $1 }
-            | DotId             { $1 }
-            | ArrowId           { $1 }
+        FunId :: { IdentifierSpan }
+            : QId           { $1 }
+            | DotId         { $1 }
+            | ArrowId       { $1 }
 
         TypeBindWhere :: { TypeBindSpan }
             : TypeBind Maybe(Where)
-                                { let whr = maybe NoWhere (\(b,s) e -> Where e b s)
-                                  in  $1 & typ_type %~ (whr $2 . (^.whre_insd)) }
+                            { $1 & typ_type %~ \whre ->
+                                getWhere $2 (whre^.whre_insd) exp_annot }
 
         TypeBind :: { TypeBindSpan }
-            : TypeBind_(ExpId)  { $1 }
+            : TypeBind_(ExpId)
+                            { $1 }
 
         TypeBind_(expid) :: { TypeBindSpan }
             : Id ':' Expression_(expid)
-                                { TypeBind $1 (NoWhere $3)
-                                    (srcSpanSpan ($1^.idn_annot) ($3^.exp_annot)) }
+                            { TypeBind $1 (Where $3 Nothing ($3^.exp_annot))
+                                (srcSpanSpan ($1^.idn_annot) ($3^.exp_annot)) }
 
     ----------------------------------------
 
-        ExpressionWhere :: { WhereSpan Expression }
+        ExpressionWhere :: { ExprWhereSpan }
             : Expression Maybe(Where)
-                                { (maybe NoWhere (\(b,s) e -> Where e b s) $2) $1 }
+                            { getWhere $2 $1 exp_annot }
 
         Expression :: { ExpressionSpan }
             : Expression_(ExpId)
-                                { $1 }
+                            { $1 }
 
             ExpId :: { IdentifierSpan }
-                : QId               { $1 }
-                | DotId             { $1 }
-                | ArrowId           { $1 }
-                | EqualsId          { $1 }
+                : QId           { $1 }
+                | DotId         { $1 }
+                | ArrowId       { $1 }
+                | EqualsId      { $1 }
 
             Expression_(expid) :: { ExpressionSpan }
                 : '\ 'List1(Argument(LambdaId)) '->' Expression_(expid)
-                                    { let f a e = Lambda a e (s a e) ;  -- leave the ';'
-                                          s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
-                                      in foldr f $4 $2 }
+                                { let s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
+                                  in foldr (\a e -> Lambda a e (s a e)) $4 $2 }
+                -- | 'let' '{^' Body '^}' 'in' Expression_(expid)
+                --                 { Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' Expression_(expid)
-                                    { Forall $2 $4
-                                        (srcSpanSpan $1 ($4^.exp_annot)) }
+                                { Forall $2 $4
+                                    (srcSpanSpan $1 ($4^.exp_annot)) }
                 | 'exists' '(' TypeBind ';' Expression_(expid) ')'
-                                    { Exists $3 $5
-                                        (srcSpanSpan $1 $6)}
+                                { Exists $3 $5
+                                    (srcSpanSpan $1 $6)}
                 | 'select' TypeBind_(expid)
-                                    { Select $2
-                                        (srcSpanSpan $1 ($2^.typ_annot)) }
+                                { Select $2
+                                    (srcSpanSpan $1 ($2^.typ_annot)) }
                 | Term(expid) Expression_(expid)
-                                    { Apply $1 $2
-                                        (srcSpanSpan ($1^.exp_annot) ($2^.exp_annot)) }
+                                { Apply $1 $2
+                                    (srcSpanSpan ($1^.exp_annot) ($2^.exp_annot)) }
                 | Term(expid)
-                                    { $1 }
+                                { $1 }
 
                 LambdaId :: { IdentifierSpan }
-                    : QId               { $1 }
-                    | DotId             { $1 }
-                    | EqualsId          { $1 }
+                    : QId           { $1 }
+                    | DotId         { $1 }
+                    | EqualsId      { $1 }
 
                 ForallId :: { IdentifierSpan }
-                    : QId               { $1 }
-                    | ArrowId           { $1 }
-                    | EqualsId          { $1 }
+                    : QId           { $1 }
+                    | ArrowId       { $1 }
+                    | EqualsId      { $1 }
 
                 Term(expid) :: { ExpressionSpan }
-                    : expid             { Var ($1^.idn_str) ($1^.idn_annot) }
-                    | Literal           { Lit $1 ($1^.lit_annot) }
+                    : expid         { Var ($1^.idn_str) ($1^.idn_annot) }
+                    | Literal       { Lit $1 ($1^.lit_annot) }
                     | '{' ListSep1(ImplicitBinding, ',') '}'
-                                        { ImplicitExpr $2 (srcSpanSpan $1 $3) }
+                                    { ImplicitExpr $2 (srcSpanSpan $1 $3) }
                     | '(' Expression ')'
-                                        { $2 & exp_annot .~ srcSpanSpan $1 $3 }
+                                    { $2 & exp_annot .~ srcSpanSpan $1 $3 }
 
                     Literal :: { LiteralSpan }
-                        : int               { LitInt    ($1^.loc_insd.to tkInt)
-                                                ($1^.loc_span) }
-                        | chr               { LitChar   ($1^.loc_insd.to tkChar)
-                                                ($1^.loc_span) }
-                        | str               { LitString ($1^.loc_insd.to tkString)
-                                                ($1^.loc_span) }
+                        : int           { LitInt    ($1^.loc_insd.to tkInt)
+                                            ($1^.loc_span) }
+                        | chr           { LitChar   ($1^.loc_insd.to tkChar)
+                                            ($1^.loc_span) }
+                        | str           { LitString ($1^.loc_insd.to tkString)
+                                            ($1^.loc_span) }
 
                     ImplicitBinding :: { ImplicitBindingSpan }
                         : Id '=' Expression
-                                            { ImplicitBind $1 $3
-                                                (srcSpanSpan ($1^.idn_annot)
-                                                             ($3^.exp_annot)) }
+                                        { ImplicitBind $1 $3
+                                            (srcSpanSpan ($1^.idn_annot)
+                                                         ($3^.exp_annot)) }
 
 {
 
@@ -324,5 +318,10 @@ parseError (Loc l tk) = case tk of
         -- TkVRCurly    -> lexer parseError
         -- TkVSemicolon -> lexer parseError
         _ -> throwError (Loc l (ParseError (PErr (show tk))))
+
+-- getWhere :: Maybe (BodySpan, SrcSpan) -> f -> (Lens' f SrcSpan) -> Where f SrcSpan
+getWhere mwhre e elns = case mwhre of
+        Just (bdy, spn) -> Where e (Just bdy) (srcSpanSpan (e^.elns) spn)
+        Nothing         -> Where e Nothing    (e^.elns)
 
 }
