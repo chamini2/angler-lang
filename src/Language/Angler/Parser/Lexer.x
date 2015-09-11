@@ -154,13 +154,14 @@ reserved = Map.fromList
         [ ("export"   , TkExport    )
         , ("import"   , TkImport    )
         , ("as"       , TkAs        )
-        , ("closed"   , TkClosed    )
         , ("open"     , TkOpen      )
         , ("reopen"   , TkReopen    )
+        , ("closed"   , TkClosed    )
+        , ("with"     , TkWith      )
         , ("where"    , TkWhere     )
         , ("forall"   , TkForall    )
         , ("exists"   , TkExists    )
-        , ("with"     , TkWith      )
+        , ("select"   , TkSelect    )
         -- , ("behaviour", TkBehaviour )
         -- , ("on"    , TkOn        )
         -- , ("is"    , TkIs        )
@@ -264,7 +265,7 @@ identifier idTk span buf len = case Map.lookup str reserved of
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
                 TkWhere -> pushLP lp_lex_state layout
-                TkAs    -> pushLP lp_lex_state layout  -- for types, not imports
+                TkWith  -> pushLP lp_lex_state layout   -- for type constructors
                 _       -> return ()
 
 newLayoutContext :: Token -> Action

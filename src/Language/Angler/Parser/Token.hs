@@ -26,13 +26,14 @@ data Token
   | TkExport
   | TkImport
   | TkAs
-  | TkClosed
   | TkOpen
   | TkReopen
+  | TkClosed
+  | TkWith
   | TkWhere
   | TkForall
   | TkExists
-  | TkWith
+  | TkSelect
   -- | TkBehaviour
   -- | TkOn
   -- | TkIs
@@ -77,13 +78,14 @@ instance Show Token where
         TkExport           -> "export"
         TkImport           -> "import"
         TkAs               -> "as"
-        TkClosed           -> "closed"
         TkOpen             -> "open"
         TkReopen           -> "reopen"
+        TkClosed           -> "closed"
+        TkWith             -> "with"
         TkWhere            -> "where"
         TkForall           -> "forall"
         TkExists           -> "exists"
-        TkWith             -> "with"
+        TkSelect           -> "select"
         -- TkOn               -> "on"
         -- TkIs               -> "is"
 
