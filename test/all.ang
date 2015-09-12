@@ -58,6 +58,12 @@ reopen Currency with
         USD : Nat -> Currency
         EUR : Nat -> Currency
 
+foldr : forall x:Type, y:Type . (x -> y -> y) -> y -> List x -> y
+foldr f (x :: xs) y = f x rest
+        where
+                rest = foldr f xs y
+foldr _ Nil       y = y
+
 {-closed Bool : Type with
         closed True  : Bool with
                 Yes  : True
