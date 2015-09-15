@@ -35,6 +35,7 @@ executable angler
 
   -- other-extensions:
   build-depends:          base >=4.8 && <4.9
+                                -- GHC 7.10
                         , array
                                 -- alex
                         , containers
@@ -47,6 +48,8 @@ executable angler
                                 -- Control.Lens
                         , mtl
                                 -- MonadTrans
+                        , parsec
+                                -- Text.Parsec
                         , utf8-string
                                 -- Codec.Binary.String.UTF8
   default-language:     Haskell2010

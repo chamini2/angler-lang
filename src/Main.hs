@@ -1,6 +1,6 @@
 module Main where
 
-import           Language.Angler.AST           (prettyShow)
+import           Language.Angler.AST
 import           Language.Angler.Parser.Lexer  (evalLP)
 import           Language.Angler.Parser.Parser (parseModule)
 
@@ -8,6 +8,8 @@ import           Control.Lens
 import           Control.Monad                 (unless, when)
 import           Data.Default                  (Default(..))
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
+import           System.Directory              (doesFileExist)
+import           System.Exit                   (exitWith, ExitCode(..))
 import           System.Environment            (getArgs)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
                                                 openFile, stdin)
@@ -27,7 +29,7 @@ main = do
         -- Parse options, getting a list of option actions
         let (optActions, nonOptions, optErrors) = getOpt Permute optionDescrs args
 
-        unless (null optErrors) $ ioError (userError (concat optErrors))
+        unless (null optErrors) (ioError (userError (concat optErrors)))
 
         options <- foldl (>>=) (return def) optActions
 
@@ -37,11 +39,11 @@ main = do
 
         print options
 
-        angler options handle filepath
+        readModule options handle filepath
 
-angler :: Options -> Handle -> FilePath -> IO ()
-angler options handle filepath = do
-        putStrLn $ "Checking module (" ++ filepath ++ ")"
+readModule :: Options -> Handle -> FilePath -> IO ()
+readModule options handle filepath = do
+        putStrLn ("Checking module (" ++ filepath ++ ")")
 
         input <- hGetContents handle
         let evalLP' = evalLP input (SrcLoc filepath 1 1)
@@ -49,7 +51,7 @@ angler options handle filepath = do
         when (view opt_tokens options) $ do
                 putStrLn "\n\n***** lexer\n"
                 case evalLP' lexTokens of
-                        Right ltks -> putStrLn . intercalate " " $ map (showNL . view loc_insd) ltks
+                        Right ltks -> putStrLn (intercalate " " (map (showNL . view loc_insd) ltks))
                             where
                                 showNL tk = (case tk of
                                        TkVSemicolon -> (++ "\n") . show
@@ -59,17 +61,20 @@ angler options handle filepath = do
 
                         _ -> return ()
 
+        ast <- case evalLP' parseModule of
+                Right ast -> return ast
+                Left  err -> printFailure err 1
+
         when (view opt_ast options) $ do
                 putStrLn "\n\n***** parser\n"
-                case evalLP' parseModule of
-                        Right lmod -> putStrLn (prettyShow lmod)
-                        Left  err  -> print err
+                putStrLn (prettyShow ast)
 
         -- symbols <- readModule options modrelpath
+        return ()
+
     where
+        -- evalLP' :: String -> LP a -> a
+        evalLP' input = evalLP input (SrcLoc filepath 1 1)
 
-
--- readModule :: Options -> FilePath -> IO a
--- readModule options modrelpath = do
---         let paths = view opt_paths options
---         msum ()
+        printFailure :: Show s => s -> Int -> IO a
+        printFailure s code = print s >> exitWith (ExitFailure code)
