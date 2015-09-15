@@ -37,10 +37,10 @@ instance Default Options where
 
 optionDescrs :: [OptDescr (Options -> IO Options)]
 optionDescrs =
-        [ Option ['h'] ["help"]        (NoArg (const (printSuccess help)))
+        [ Option ['h'] ["help"]        (NoArg (const (putStrLnSuccess help)))
                 "shows this help message"
 
-        , Option ['v'] ["version"]     (NoArg (const (printSuccess version)))
+        , Option ['v'] ["version"]     (NoArg (const (putStrLnSuccess version)))
                 "shows version number"
 
         , Option ['w'] ["warnings"]    (NoArg (optBool opt_warnings True))
@@ -81,8 +81,8 @@ optionDescrs =
                         then return (over opt_paths (dir :) opt)
                         else ioError (userError (dir ++ " is not a valid directory"))
 
-        printSuccess :: String -> IO Options
-        printSuccess str = putStrLn str >> exitWith ExitSuccess
+        putStrLnSuccess :: String -> IO Options
+        putStrLnSuccess str = putStrLn str >> exitWith ExitSuccess
 
         help :: String
         help = flip usageInfo optionDescrs "usage: angler [OPTIONS...] [FILE]\n" ++

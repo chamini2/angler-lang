@@ -66,6 +66,7 @@ data BodyStmt a
   | FunctionDecl
         { _fdec_id      :: Identifier a
         , _fdec_type    :: ExprWhere a
+        , _fdec_fix     :: Maybe (Fixity a)
         , _stm_annot    :: a
         }
   | FunctionDef
@@ -97,8 +98,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | Apply
-        { _app_fun      :: Expression a
-        , _app_over     :: Expression a
+        { _app_exprs    :: Seq (Expression a)
         , _exp_annot    :: a
         }
   | Lambda
@@ -122,7 +122,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | Select
-        { _with_type    :: TypeBind a
+        { _slct_type    :: TypeBind a
         , _exp_annot    :: a
         }
   | ImplicitExpr
@@ -140,6 +140,19 @@ data TypeBind a
         }
   deriving Show
 type TypeBindSpan = TypeBind SrcSpan
+
+data Associativity
+  = AssLeft
+  | AssRight
+  | AssNon
+  deriving Show
+
+data Fixity a
+  = Prefix a
+  | Infix Associativity a
+  | Postfix a
+  | Closed a
+  deriving Show
 
 data Argument a
   = Binding
@@ -227,13 +240,13 @@ prettyShowIndent n str = showLines . _ps_lines . flip execState initialST . psho
 
 pshows :: (PrettyShow a, Foldable f) => PrettyShowMonad -> f a -> PrettyShowMonad
 pshows act xs = case toList xs of
-        p:ps -> pshow p >> mapM_ (\x -> act >> pshow x) ps
-        _    -> return ()
+        p : ps -> pshow p >> mapM_ (\x -> act >> pshow x) ps
+        _      -> return ()
 
 string :: String -> PrettyShowMonad
 string str = ps_lines._head._2 %= (++ str)
 
--- lstring :: Lens' a String -> a -> PrettyShowMonad
+lstring :: Getting String s String -> s -> PrettyShowMonad
 lstring lns = string . view lns
 
 line :: PrettyShowMonad
@@ -289,8 +302,12 @@ instance PrettyShow (BodyStmt a) where
                         string "closed " >> lstring idn_str idn
                         string " : " >> pshow typ >> string " with"
                         raise >> line >> pshows line cns >> lower
-                FunctionDecl idn typ _ ->
-                        lstring idn_str idn >> string " : " >> pshow typ
+                FunctionDecl idn typ mfx _ -> do
+                        lstring idn_str idn
+                        when (isJust mfx) $ do
+                                let Just fx = mfx
+                                string "FIXITY"
+                        string " : " >> pshow typ
                 FunctionDef args expr _ -> do
                         pshows (string " ") args
                         string " = " >> pshow expr
@@ -312,12 +329,16 @@ instance PrettyShow (Expression a) where
         pshow expr = case expr of
                 Var str _           -> string "«" >> string str >> string "»"
                 Lit lit _           -> pshow lit
-                Apply fun ovr _     -> do
-                        case fun of
-                                Var {} -> pshow fun
-                                Lit {} -> pshow fun
-                                _      -> string "(" >> pshow fun >> string ")"
-                        string " (" >> pshow ovr >> string ")"
+                Apply exprs   _     -> pshows (string " ") exprs
+                -- Apply fun ovr _     -> caseShow fun >> string " " >> caseShow ovr
+                --     where
+                --         caseShow :: Expression a -> PrettyShowMonad
+                --         caseShow expr = case expr of
+                --                 Var {}          -> pshow expr
+                --                 Lit {}          -> pshow expr
+                --                 Exists {}       -> pshow expr
+                --                 ImplicitExpr {} -> pshow expr
+                --                 _      -> string "(" >> pshow expr >> string ")"
                 Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
                 Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
                                                         >> pshow expr'

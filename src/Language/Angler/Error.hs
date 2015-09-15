@@ -15,9 +15,10 @@ data Error
 data LexError
   = LErr                        String
   | LErrUnexpectedCharacter     Char
+  | LErrUnterminatedComment
   deriving Show
 
 data ParseError
-  = PErr                String
-  | PErrEmptyLayout
+  = PErr                        String
+  | PErrEmptyLayoutAfter        String
   deriving Show
