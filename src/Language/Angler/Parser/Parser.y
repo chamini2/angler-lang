@@ -250,32 +250,41 @@ Body :: { BodySpan }
             : Expression_(ExpId)
                             { $1 }
 
+            Expression_(expid) :: { ExpressionSpan }
+                : ExpressionList_(expid)
+                                -- { let s l r = srcSpanSpan (l^.exp_annot) (r^.exp_annot)
+                                --   in foldl1 (\l r -> Apply l r (s l r)) $1 }
+                                { if length $1 == 1
+                                    then $1^?!_head
+                                    else Apply $1
+                                            (srcSpanSpan ($1^?!_head.exp_annot)
+                                                         ($1^?!_last.exp_annot)) }
+
             ExpId :: { IdentifierSpan }
                 : QId           { $1 }
                 | DotId         { $1 }
                 | ArrowId       { $1 }
                 | EqualsId      { $1 }
 
-            Expression_(expid) :: { ExpressionSpan }
+            ExpressionList_(expid) :: { Seq ExpressionSpan }
                 : '\ 'List1(Argument(LambdaId)) '->' Expression_(expid)
                                 { let s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
-                                  in foldr (\a e -> Lambda a e (s a e)) $4 $2 }
+                                  in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
                 -- | 'let' '{^' Body '^}' 'in' Expression_(expid)
-                --                 { Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
+                --                 { pure $ Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' Expression_(expid)
-                                { Forall $2 $4
+                                { pure $ Forall $2 $4
                                     (srcSpanSpan $1 ($4^.exp_annot)) }
                 | 'exists' '(' TypeBind ';' Expression_(expid) ')'
-                                { Exists $3 $5
+                                { pure $ Exists $3 $5
                                     (srcSpanSpan $1 $6)}
                 | 'select' TypeBind_(expid)
-                                { Select $2
+                                { pure $ Select $2
                                     (srcSpanSpan $1 ($2^.typ_annot)) }
-                | Term(expid) Expression_(expid)
-                                { Apply $1 $2
-                                    (srcSpanSpan ($1^.exp_annot) ($2^.exp_annot)) }
+                | Term(expid) ExpressionList_(expid)
+                                { $1 <| $2 }
                 | Term(expid)
-                                { $1 }
+                                { pure $1 }
 
                 LambdaId :: { IdentifierSpan }
                     : QId           { $1 }
@@ -296,11 +305,20 @@ Body :: { BodySpan }
                                     { $2 & exp_annot .~ srcSpanSpan $1 $3 }
 
                     Literal :: { LiteralSpan }
+                        : LitInt        { $1 }
+                        | LitChar       { $1 }
+                        | LitString     { $1 }
+
+                    LitInt :: { LiteralSpan }
                         : int           { LitInt    ($1^.loc_insd.to tkInt)
                                             ($1^.loc_span) }
-                        | chr           { LitChar   ($1^.loc_insd.to tkChar)
+
+                    LitChar :: { LiteralSpan }
+                        : chr           { LitChar   ($1^.loc_insd.to tkChar)
                                             ($1^.loc_span) }
-                        | str           { LitString ($1^.loc_insd.to tkString)
+
+                    LitString :: { LiteralSpan }
+                        : str           { LitString ($1^.loc_insd.to tkString)
                                             ($1^.loc_span) }
 
                     ImplicitBinding :: { ImplicitBindingSpan }
