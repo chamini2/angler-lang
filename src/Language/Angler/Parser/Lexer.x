@@ -338,10 +338,16 @@ lexToken = do
         inp@(l,_c,_bs,b) <- getInput
         ls <- peekLP lp_lex_state
         case alexScan inp ls of
-                AlexEOF -> use lp_context >>= \ctx -> if not (null ctx)
-                        -- closing all the open layouts we had
-                        then popLP lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
-                        else return (Loc (srcLocSpan l l) TkEOF)
+                AlexEOF -> do
+                    ls' <- peekLP lp_lex_state
+                    if ls' == comment
+                        then throwError (Loc (srcLocSpan l l) (LexError LErrUnterminatedComment))
+                        else do
+                        ctx <- use lp_context
+                        if not (null ctx)
+                            -- closing all the open layouts we had
+                            then popLP lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
+                            else return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
                         throwError (Loc (srcLocSpan l l) (LexError (LErrUnexpectedCharacter c')))
                 AlexSkip  inp' _len -> setInput inp' >> lexToken
