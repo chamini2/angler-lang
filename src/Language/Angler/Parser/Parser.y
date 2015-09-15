@@ -187,7 +187,7 @@ Body :: { BodySpan }
         -- function declaration
             -- _$_ : forall a:Type, b:Type . (a -> b) -> a -> b
         | Id ':' ExpressionWhere
-                        { FunctionDecl $1 $3
+                        { FunctionDecl $1 $3 Nothing
                             (srcSpanSpan ($1^.idn_annot)
                                          ($3^.whre_insd.exp_annot)) }
 
