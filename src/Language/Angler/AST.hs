@@ -106,11 +106,11 @@ data Expression a
         , _lam_expr     :: Expression a
         , _exp_annot    :: a
         }
-  -- | Let
-  --       { _let_body     :: Body a
-  --       , _let_expr     :: Expression a
-  --       , _exp_annot    :: a
-  --       }
+  | Let
+        { _let_body     :: Body a
+        , _let_expr     :: Expression a
+        , _exp_annot    :: a
+        }
   | Forall
         { _fall_typs    :: Seq (TypeBind a)
         , _fall_expr    :: Expression a
@@ -340,6 +340,17 @@ instance PrettyShow (Expression a) where
                 --                 ImplicitExpr {} -> pshow expr
                 --                 _      -> string "(" >> pshow expr >> string ")"
                 Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
+                Let bdy expr _      -> do
+                        raise >> line
+                        string "let"
+
+                        raise >> line
+                        pshows line bdy
+                        lower >> line
+
+                        string "in "
+                        pshow expr
+                        lower
                 Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
                                                         >> pshow expr'
                 Exists typ expr' _  -> string "exists (" >> pshow typ >> string ";"

@@ -30,6 +30,8 @@ data Token
   | TkReopen
   | TkClosed
   | TkWith
+  | TkLet
+  | TkIn
   | TkWhere
   | TkForall
   | TkExists
@@ -82,6 +84,8 @@ instance Show Token where
         TkReopen           -> "reopen"
         TkClosed           -> "closed"
         TkWith             -> "with"
+        TkLet              -> "let"
+        TkIn               -> "in"
         TkWhere            -> "where"
         TkForall           -> "forall"
         TkExists           -> "exists"

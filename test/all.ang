@@ -128,9 +128,12 @@ firstZ (_ :: xs) = S (firstZ xs)
 _=_ : Type -> Type -> Type
 (a = b) = a               -- parses a = «b = a»
 
--- f : (Type -> Type -> Type) -> Nat -> Nat
 -- f = \ -> n -> n      -- parse error: no arguments for lambda
 
 -- : : String -> Type -> (String & Type) -- parser error: ':' unexpected
 :* : String -> Type -> (String & Type)
 :* str typ = str /\ typ
+
+f : Nat
+f = 2 + let a = 3
+            b = a + 2 in a

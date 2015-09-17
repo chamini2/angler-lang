@@ -2,7 +2,7 @@
 module Language.Angler.Parser.Parser
         ( parseModule ) where
 
-import           Language.Angler.Parser.Lexer (lexer)
+import           Language.Angler.Parser.Lexer (lexer, popContext)
 
 import           Language.Angler.AST
 import           Language.Angler.Error
@@ -45,6 +45,8 @@ import           Data.Maybe                   (isJust, fromJust)
         'reopen'                { Loc $$ TkReopen        }
         'closed'                { Loc $$ TkClosed        }
         'with'                  { Loc $$ TkWith          }
+        'let'                   { Loc $$ TkLet           }
+        'in'                    { Loc $$ TkIn            }
         'where'                 { Loc $$ TkWhere         }
         'forall'                { Loc $$ TkForall        }
         'exists'                { Loc $$ TkExists        }
@@ -160,6 +162,10 @@ Body :: { BodySpan }
     : ListSep1(BodyStmt, '^;')
                     { $1 }
 
+    CloseBrace :: { () }
+        : '^}'          { () }
+        | error         {% popContext }
+
     BodyStmt :: { BodyStmtSpan }
         -- open type definition
             -- open Currency with
@@ -267,11 +273,11 @@ Body :: { BodySpan }
                 | EqualsId      { $1 }
 
             ExpressionList_(expid) :: { Seq ExpressionSpan }
-                : '\ 'List1(Argument(LambdaId)) '->' Expression_(expid)
+                : '\ ' List1(Argument(LambdaId)) '->' Expression_(expid)
                                 { let s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
                                   in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
-                -- | 'let' '{^' Body '^}' 'in' Expression_(expid)
-                --                 { pure $ Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
+                | 'let' '{^' Body CloseBrace 'in' Expression_(expid)
+                                { pure $ Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' Expression_(expid)
                                 { pure $ Forall $2 $4
                                     (srcSpanSpan $1 ($4^.exp_annot)) }

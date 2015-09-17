@@ -16,6 +16,8 @@ module Language.Angler.Parser.Lexer
         , runLP
         , execLP
         , evalLP
+
+        , popContext
         ) where
 
 import           Language.Angler.Error
@@ -158,6 +160,8 @@ reserved = Map.fromList
         , ("reopen"   , TkReopen    )
         , ("closed"   , TkClosed    )
         , ("with"     , TkWith      )
+        , ("let"      , TkLet       )
+        , ("in"       , TkIn        )
         , ("where"    , TkWhere     )
         , ("forall"   , TkForall    )
         , ("exists"   , TkExists    )
@@ -264,8 +268,9 @@ identifier idTk span buf len = case Map.lookup str reserved of
         -- add an opening curly brace.
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
-                TkWhere -> pushLP lp_lex_state layout
+                TkWhere -> pushLP lp_lex_state layout   -- for .. where ..
                 TkWith  -> pushLP lp_lex_state layout   -- for type constructors
+                TkLet   -> pushLP lp_lex_state layout   -- for let .. in ..
                 _       -> return ()
 
 newLayoutContext :: Token -> Action
@@ -281,6 +286,9 @@ newLayoutContext tk span _buf len = do
                                 -- we must generate a {} sequence now.
                                 pushLP lp_lex_state empty_layout >> return (Loc span tk)
                 _ -> pushLP lp_context (Layout offset) >> return (Loc span tk)
+
+popContext :: LP ()
+popContext = popLP lp_context
 
 emptyLayout :: Action
 emptyLayout span _buf _len = do
