@@ -21,4 +21,15 @@ data LexError
 data ParseError
   = PErr                        String
   | PErrEmptyLayoutAfter        String
+
+  -- expressions
+  | NoArgumentsLambda
+  | NoExpressionLambda
+  | NoBodyLetIn
+  | NoExpressionLetIn
+  | NoVariablesForall
+  | NoExpressionForall
+  | NoVariableExists
+  | NoExpressionExists
+  | NoBindSelect
   deriving Show

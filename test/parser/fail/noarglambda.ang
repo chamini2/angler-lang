@@ -1,0 +1,2 @@
+f : forall a:Type . List a -> List Nat
+f = map (\ -> 2)

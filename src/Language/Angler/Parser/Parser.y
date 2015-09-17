@@ -283,7 +283,7 @@ Body :: { BodySpan }
                                     (srcSpanSpan $1 ($4^.exp_annot)) }
                 | 'exists' '(' TypeBind ';' Expression_(expid) ')'
                                 { pure $ Exists $3 $5
-                                    (srcSpanSpan $1 $6)}
+                                    (srcSpanSpan $1 $6) }
                 | 'select' TypeBind_(expid)
                                 { pure $ Select $2
                                     (srcSpanSpan $1 ($2^.typ_annot)) }
@@ -291,6 +291,35 @@ Body :: { BodySpan }
                                 { $1 <| $2 }
                 | Term(expid)
                                 { pure $1 }
+
+                -- errors
+                | '\ ' {- empty -} '->'
+                                {% throwPError NoArgumentsLambda
+                                    (srcSpanSpan $1 $2) }
+                | '\ ' List1(Argument(LambdaId)) '->' {- empty -}
+                                {% throwPError NoExpressionLambda
+                                    (srcSpanSpan $1 $3) }
+                | 'let' '{^' {- empty -} CloseBrace 'in'
+                                {% throwPError NoBodyLetIn
+                                    (srcSpanSpan $1 $4) }
+                | 'let' '{^' Body CloseBrace 'in' {- empty -}
+                                {% throwPError NoExpressionLetIn
+                                    (srcSpanSpan $1 $5) }
+                | 'forall' {- empty -} '.'
+                                {% throwPError NoVariablesForall
+                                    (srcSpanSpan $1 $2) }
+                | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' {- empty -}
+                                {% throwPError NoExpressionForall
+                                    (srcSpanSpan $1 $3) }
+                | 'exists' '(' {- empty -} ';'
+                                {% throwPError NoVariableExists
+                                    (srcSpanSpan $1 $3) }
+                | 'exists' '(' TypeBind ';' {- empty -} ')'
+                                {% throwPError NoExpressionExists
+                                        (srcSpanSpan $1 $5) }
+                | 'select' Expression_(expid)
+                                {% throwPError NoBindSelect
+                                        (srcSpanSpan $1 ($2^.exp_annot))}
 
                 LambdaId :: { IdentifierSpan }
                     : QId           { $1 }
@@ -336,12 +365,14 @@ Body :: { BodySpan }
 {
 
 parseError :: Located Token -> LP a
--- parseError (Loc l tk) = throwError (Loc l (ParseError (PErr (show tk))))
 parseError (Loc l tk) = case tk of
         -- TkVLCurly    -> lexer parseError
         -- TkVRCurly    -> lexer parseError
         -- TkVSemicolon -> lexer parseError
         _ -> throwError (Loc l (ParseError (PErr (show tk))))
+
+throwPError :: ParseError -> SrcSpan -> LP a
+throwPError err = throwError . flip Loc (ParseError err)
 
 -- getWhere :: Maybe (BodySpan, SrcSpan) -> f -> (Lens' f SrcSpan) -> Where f SrcSpan
 getWhere mwhre e elns = case mwhre of

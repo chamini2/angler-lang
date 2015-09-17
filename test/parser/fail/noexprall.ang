@@ -1,0 +1,2 @@
+f : forall a:Nat .
+f = map S
