@@ -4,6 +4,7 @@ module Rewrite where
 
 import Data.Foldable
 import Data.Maybe
+import Data.Map.Strict (Map, fromList, empty, insertWith)
 
 import Text.Parsec hiding (satisfy)
 
@@ -17,47 +18,76 @@ data Expr
   | Id String
   deriving (Eq, Show)
 
-type OpPart   = Maybe String
+type OpPart = Maybe String
+
 type Operator = [OpPart]
 
 data Assoc
   = ANon
   | ALeft
   | ARight
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
+makePrisms ''Assoc
 
 data Fixity
   = Pre
   | Post
   | Inf Assoc
   | Closed
-  deriving (Eq, Show)
-
-makePrisms ''Assoc
+  deriving (Eq, Show, Ord)
 makePrisms ''Fixity
 
-type PrecedenceLevel = [ (Fixity, String, Operator) ]
 
--- from strong to weak
-ops :: [ PrecedenceLevel ]
-ops = [ --(Post      , ["!_"]           )
-        [
-          (Inf ALeft , "_+_"          , [Nothing, Just "+", Nothing])
-        , (Inf ALeft , "_-_"          , [Nothing, Just "-", Nothing])
+opName :: Operator -> String
+opName = foldr (\m s -> (maybe "_" id m) ++ s) ""
+
+opParts :: String -> Operator
+opParts = foldr go []
+    where
+        go '_' (Nothing : os) = error "two holes in an identifier"
+        go '_' os             = Nothing : os
+        go c   (Just o  : os) = Just (c : o) : os
+        go c   (Nothing : os) = Just [c] : Nothing : os
+        go c   []             = Just [c] : []
+
+type PrecedenceLevel = Map Fixity [ Operator ]
+
+ops = map ($ empty)
+        [ add  Post         [opParts "!_"]
+        , add (Inf ALeft)   [opParts "_+_", opParts "_-_"]
+        , add (Inf ANon)    [opParts "_==_"]
+        , add (Inf ARight)  [opParts "_/\\_"]
+        , add  Pre          [opParts "if_then_else_"]
         ]
-      , [ (Inf ANon  , "_==_"         , [Nothing, Just "==", Nothing])  ]
-      , [ (Inf ARight, "_/\\_"        , [Nothing, Just "/\\", Nothing]) ]
-      , [ (Pre       , "if_then_else_", [Just "if", Nothing, Just "then", Nothing, Just "else", Nothing]) ]
-      ]
+    where
+        add = insertWith (++)
 
-toExprs :: String -> [Expr]
-toExprs = fmap Id . words
+-- toExprs :: String -> [Expr]
+-- toExprs = fmap Id . words
+
+toExprs :: String -> Expr
+toExprs = flatten . Apply . fst . func . words
+    where
+        func wrds = case wrds of
+            w : ws -> case w of
+                    "(" -> let (xs', left') = func left in (Apply xs : xs', left')
+                    ")" -> ([], ws)
+                    _   -> (Id w : xs, left)
+                where
+                    (xs, left) = func ws
+            _      -> ([], [])
+        flatten :: Expr -> Expr
+        flatten ex = case ex of
+            Apply [x] -> flatten x
+            Apply xs  -> Apply (map flatten xs)
+            _         -> ex
+
 
 t0 = toExprs "if f a then 2 else if b then 3 else 4"
 t1 = toExprs "a /\\ b c /\\ d e f /\\ g"
 t2 = toExprs "if a /\\ b then c else d /\\ e f"
 t3 = toExprs "a == b /\\ c d == e f"
-t4 = toExprs "a == " ++ [Apply $ toExprs "if b c then d /\\ if e then f else g else h == i"]
+t4 = toExprs "a == ( if b c then d /\\ if e then f else g else h == i )"
 t5 = toExprs "a + b - c + d"
 t7 = toExprs "a == b + c /\\ d == e"
 
@@ -120,25 +150,105 @@ satisfy g = tokenPrim show nextPos testTok
         nextPos p _t _ts = p
         testTok t = if g t then Just t else Nothing
 
-idn :: String -> PExpr
-idn str = satisfy testTok
+iden :: String -> PExpr
+iden s = satisfy testTok
     where
         testTok t = case t of
-                Id i | i == str -> True
-                _               -> False
+            Id i | i == s -> True
+            _             -> False
 
 -- type OpPart   = Maybe String
 -- type Operator = [OpPart]
 -- type PrecedenceLevel = [ (Fixity, Operator) ]
 
-generateParser :: [ PrecedenceLevel ] -> PExpr
+{-genPar :: [ PrecedenceLevel ] -> PExpr
+genPar lvls = exprparser
+    where
+        choicet :: [Parsec [Expr] () a] -> Parsec [Expr] () a
+        choicet = choice . map try
+
+        exprparser :: PExpr
+        exprparser = choicet (map ($ exprparser) rest)
+
+        rest :: [PExpr -> PExpr]
+        rest = foldr go [bottomparser] (map pparser lvls)
+
+        bottomparser :: PExpr
+        bottomparser expr = flatten <$> Apply <$> many1 (try identifier <|> try closedparser)
+            where
+                identifier :: PExpr
+                identifier = getState >>= satisfy . testTk
+                    where
+                        testTk prts tk = case tk of
+                            Id s | s `elem` prts -> False
+                            _                    -> True
+
+                closedparser :: PExpr
+                closedparser = iden "(" >> expr >>= \x -> iden ")" >> return (Apply [Id "(_)", x])
+
+                flatten :: Expr -> Expr
+                flatten ex = case ex of
+                        Apply [x] -> x
+                        _         -> ex
+
+        go :: ([PExpr -> PExpr] -> PExpr -> PExpr) -> [PExpr -> PExpr] -> [PExpr -> PExpr]
+        go pp acts = pp acts : acts
+
+        pparser :: PrecedenceLevel -> [PExpr -> PExpr] -> PExpr -> PExpr
+        pparser fxops below expr = try nonparser
+                               -- <|> try rightparser
+                               -- <|> try leftparser
+            where
+                pparser' :: PExpr
+                -- pparser' = choicet (map (\f -> f expr) below)
+                pparser' = choicet (map ($ expr) below)
+
+                guardops :: Fixity -> [(String, Operator)]
+                guardops fx = map (\(_,n,p) -> (n,p)) (filter ((==fx) . view _1) fxops)
+                infops :: Assoc -> [(String, Operator)]
+                infops = guardops . Inf
+
+                nonparser :: PExpr
+                nonparser = if null nonops
+                        then fail "no AssocNon operators"
+                        else do
+                            l      <- pparser'
+                            o : ps <- nonopsparser
+                            r      <- pparser'
+                            return (Apply (o : l : ps ++ [r]))
+                    where
+                        nonops :: [(String, Operator)]
+                        nonops = infops ANon
+                        nonopsparser :: PLExpr
+                        nonopsparser = makeClosedPart nonops
+
+                rightparser :: PExpr
+                rightparser = undefined
+
+                leftparser :: PExpr
+                leftparser = undefined
+
+                makeClosedPart :: [(String, Operator)] -> PLExpr
+                makeClosedPart = choicet . over traverse treat' --(treat . over (_2.traverse) (maybe expr' iden'))
+                    where
+                        treat' :: (String, [OpPart]) -> PLExpr
+                        treat' (opnm, prts) = (:) (Id opnm) <$> foldr go (fail "end of treat") prts
+                            where
+                                go :: OpPart -> PLExpr -> PLExpr
+                                go mprt act = (++) <$> lst mprt <*> act
+                                lst :: OpPart -> PLExpr
+                                lst = maybe ((: []) <$> expr) ((const [] <$>) . iden)
+-}
+
+
+{-generateParser :: [ PrecedenceLevel ] -> PExpr
 generateParser fxs = expr
     where
         expr :: PExpr
-        expr = head (foldr go [closed (idn "a")] fxs)
+        expr = head (foldl go [closed (iden "a")] fxs)
             where
-                go :: PrecedenceLevel -> [PExpr] -> [PExpr]
-                go fops ps = p : ps
+                go :: [PExpr] -> PrecedenceLevel -> [PExpr]
+                go ps fops = p : ps
                     where
                         p :: PExpr
                         p = try opclosed <|> try opnon -- <|> try opright <|> try opleft
@@ -189,6 +299,7 @@ generateParser fxs = expr
                             -- where
                             --     opright' = do
                             --         l <- p'
+
 -- pand :: PExpr
 -- pand = try prand
 --     where
@@ -247,7 +358,7 @@ generateParser fxs = expr
                 testTok t = case t of
                     Id i | i == s -> True
                     _             -> False
-
+-}
 {-
 term :: PExpr
 term = satisfy (const True)

@@ -152,6 +152,11 @@ Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
         ImportAs :: { IdentifierSpan }
             : 'as' QId      { $2 }
 
+            ----------------------------
+            -- errors
+            | 'as' {- empty -}
+                            {% throwPError (PErrExpectingIn "identifier" "as") $1 }
+
         ImportSpecific :: { (Seq IdentifierSpan, SrcSpan) }
             : '(' ListSep0(Id, ',') ')'
                             { ($2, srcSpanSpan $1 $3) }
@@ -172,15 +177,14 @@ Body :: { BodySpan }
             --     USD : Nat -> Currency
         : 'open' Id ':' ExpressionWhere Maybe(Constructors)
                         { OpenType $2 $4 ($5 & _Just %~ fst)
-                            (srcSpanSpan $1
-                                (maybe ($4^.whre_insd.exp_annot) snd $5)) }
+                            (srcSpanSpan $1 (maybe ($4^.whre_annot) snd $5)) }
 
         -- reopening type definition
             -- reopen Currency with
             --     EUR : Nat -> Currency
         | 'reopen' QId Constructors
                         { ReopenType $2 (fst $3)
-                            (srcSpanSpan $1 (snd $3))}
+                            (srcSpanSpan $1 (snd $3)) }
 
         -- closed type definition
             -- closed Nat : Type with
@@ -194,21 +198,52 @@ Body :: { BodySpan }
             -- _$_ : forall a:Type, b:Type . (a -> b) -> a -> b
         | Id ':' ExpressionWhere
                         { FunctionDecl $1 $3 Nothing
-                            (srcSpanSpan ($1^.idn_annot)
-                                         ($3^.whre_insd.exp_annot)) }
+                            (srcSpanSpan ($1^.idn_annot) ($3^.whre_annot)) }
 
         -- function definition
             -- f $ x = f x
         | List1(Argument(FunId)) '=' ExpressionWhere
                         { FunctionDef $1 $3
-                            (srcSpanSpan ($1^?!_head.arg_annot)
-                                         ($3^.whre_insd.exp_annot)) }
+                            (srcSpanSpan ($1^?!_head.arg_annot) ($3^.whre_annot)) }
+
         -- behaviour namespace
         -- | BehaviourNamespace
         -- behaviour declaration
         -- | Behaviour
         -- instance definition
         -- | Instance
+
+        --------------------------------
+        -- errors
+        | 'open' {- empty -}
+                        {% throwPError (PErrExpectingIn "identifier" "open") $1 }
+        | 'open' Id {- empty -}
+                        {% throwPError (PErrExpectingIn "type signature" "open")
+                            (srcSpanSpan $1 ($2^.idn_annot)) }
+
+        | 'reopen' {- empty -}
+                        {% throwPError (PErrExpectingIn "identifier" "reopen") $1 }
+        | 'reopen' QId
+                        {% throwPError (PErrExpectingIn "constructors" "reopen")
+                            (srcSpanSpan $1 ($2^.idn_annot)) }
+
+        | 'closed' {- empty -}
+                        {% throwPError (PErrExpectingIn "identifier" "closed") $1 }
+        | 'closed' Id {- empty -}
+                        {% throwPError (PErrExpectingIn "type signature" "closed")
+                            (srcSpanSpan $1 ($2^.idn_annot)) }
+        | 'closed' Id ':' ExpressionWhere {- empty -}
+                        {% throwPError (PErrExpectingIn "constructors" "closed")
+                            (srcSpanSpan $1 ($4^.whre_annot)) }
+        | Id ':' {- empty -}
+                        {% throwPError (PErrExpectingIn "type signature" "function declaration")
+                            (srcSpanSpan ($1^.idn_annot) $2) }
+        | {- empty -} '=' ExpressionWhere
+                        {% throwPError (PErrExpectingIn "identifier" "function definition")
+                            (srcSpanSpan $1 ($2^.whre_annot)) }
+        | List1(Argument(FunId)) '='
+                        {% throwPError (PErrExpectingIn "expression" "function definition")
+                            (srcSpanSpan ($1^?!_head.arg_annot) $2) }
 
     ----------------------------------------
 
@@ -292,33 +327,34 @@ Body :: { BodySpan }
                 | Term(expid)
                                 { pure $1 }
 
+                ------------------------
                 -- errors
                 | '\ ' {- empty -} '->'
-                                {% throwPError NoArgumentsLambda
+                                {% throwPError (PErrNoArgumentsIn "lambda")
                                     (srcSpanSpan $1 $2) }
                 | '\ ' List1(Argument(LambdaId)) '->' {- empty -}
-                                {% throwPError NoExpressionLambda
+                                {% throwPError (PErrNoExpressionIn "lambda")
                                     (srcSpanSpan $1 $3) }
                 | 'let' '{^' {- empty -} CloseBrace 'in'
-                                {% throwPError NoBodyLetIn
+                                {% throwPError (PErrEmptyLayoutAfter "let")
                                     (srcSpanSpan $1 $4) }
                 | 'let' '{^' Body CloseBrace 'in' {- empty -}
-                                {% throwPError NoExpressionLetIn
+                                {% throwPError (PErrNoExpressionIn "let-in")
                                     (srcSpanSpan $1 $5) }
                 | 'forall' {- empty -} '.'
-                                {% throwPError NoVariablesForall
+                                {% throwPError (PErrNoVariablesIn "forall")
                                     (srcSpanSpan $1 $2) }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' {- empty -}
-                                {% throwPError NoExpressionForall
+                                {% throwPError (PErrNoExpressionIn "forall")
                                     (srcSpanSpan $1 $3) }
                 | 'exists' '(' {- empty -} ';'
-                                {% throwPError NoVariableExists
+                                {% throwPError (PErrNoVariableIn "exists")
                                     (srcSpanSpan $1 $3) }
                 | 'exists' '(' TypeBind ';' {- empty -} ')'
-                                {% throwPError NoExpressionExists
+                                {% throwPError (PErrNoExpressionIn "exists")
                                         (srcSpanSpan $1 $5) }
                 | 'select' Expression_(expid)
-                                {% throwPError NoBindSelect
+                                {% throwPError (PErrNoBindIn "select")
                                         (srcSpanSpan $1 ($2^.exp_annot))}
 
                 LambdaId :: { IdentifierSpan }
