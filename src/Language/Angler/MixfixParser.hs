@@ -4,7 +4,7 @@ module Rewrite where
 
 import Data.Foldable
 import Data.Maybe
-import Data.Map.Strict (Map, fromList, empty, insertWith)
+import Data.Map.Strict (Map, fromList, empty, lookup, insertWith)
 
 import Text.Parsec hiding (satisfy)
 
@@ -159,16 +159,34 @@ iden s = satisfy testTok
 
 -- type OpPart   = Maybe String
 -- type Operator = [OpPart]
--- type PrecedenceLevel = [ (Fixity, Operator) ]
 
-{-genPar :: [ PrecedenceLevel ] -> PExpr
+choiceTry :: Stream s m t => [ParsecT s u m a] -> ParsecT s u m a
+choiceTry = choice . map try
+
+
+-- type OpPart = Maybe String
+-- type Operator = [OpPart]
+-- type PrecedenceLevel = Map Fixity [ Operator ]
+
+operatorParts :: PrecedenceLevel -> [String]
+operatorParts = toListOf (traverse.traverse.traverse._Just)
+
+infops :: Assoc -> PrecedenceLevel -> [Operator]
+infops ass = maybe [] id . lookup (Inf ass)
+
+rightops :: PrecedenceLevel -> [Operator]
+rightops lvl = maybe [] id (lookup Pre lvl) ++ infops ARight lvl
+
+nonops :: PrecedenceLevel -> [Operator]
+nonops = infops ANon
+
+{-
+genPar :: [PrecedenceLevel] -> PExpr
 genPar lvls = exprparser
     where
-        choicet :: [Parsec [Expr] () a] -> Parsec [Expr] () a
-        choicet = choice . map try
 
         exprparser :: PExpr
-        exprparser = choicet (map ($ exprparser) rest)
+        exprparser = choiceTry (map ($ exprparser) undefined {-rest-})
 
         rest :: [PExpr -> PExpr]
         rest = foldr go [bottomparser] (map pparser lvls)
@@ -238,8 +256,8 @@ genPar lvls = exprparser
                                 go mprt act = (++) <$> lst mprt <*> act
                                 lst :: OpPart -> PLExpr
                                 lst = maybe ((: []) <$> expr) ((const [] <$>) . iden)
--}
 
+-}
 
 {-generateParser :: [ PrecedenceLevel ] -> PExpr
 generateParser fxs = expr
