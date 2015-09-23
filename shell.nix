@@ -5,7 +5,7 @@ let
   inherit (nixpkgs) pkgs;
 
   f = { mkDerivation, alex, array, base, containers, data-default
-      , directory, happy, lens, mtl, parsec, stdenv, utf8-string, cabal-install
+      , directory, happy, lens, mtl, parsec, stdenv, utf8-string
       }:
       mkDerivation {
         pname = "angler";
@@ -17,7 +17,7 @@ let
           array base containers data-default directory lens mtl parsec
           utf8-string
         ];
-        executableToolDepends = [ cabal-install alex happy ];
+        executableToolDepends = [ alex happy ];
         homepage = "https://github.com/angler-lang";
         description = "Angler Functional Programming Language";
         license = stdenv.lib.licenses.bsd3;
