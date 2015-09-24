@@ -198,7 +198,7 @@ genn lvls = exprParser
         opsParts = concatMap operatorParts lvls
 
         exprParser :: PExpr
-        exprParser = choiceTry (map ($ (fail "lol")) parsers)
+        exprParser = choiceTry (map ($ exprParser) parsers)
             where
                 parsers :: [PExpr -> PExpr]
                 parsers = foldr go [bottomParser] (map pParser lvls)
