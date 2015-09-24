@@ -11,6 +11,8 @@ import Text.Parsec hiding (satisfy)
 import Control.Applicative ((<*>), liftA, liftA2)
 import Control.Lens hiding (op)
 
+import Debug.Trace
+
 import Prelude hiding (lookup)
 
 data Expr
@@ -38,11 +40,11 @@ data Fixity
 makePrisms ''Fixity
 
 
-opName :: Operator -> String
-opName = foldr (\m s -> (maybe "_" id m) ++ s) ""
+opStr :: Operator -> String
+opStr = foldr (\m s -> (maybe "_" id m) ++ s) ""
 
-opParts :: String -> Operator
-opParts = foldr go []
+strOp :: String -> Operator
+strOp = foldr go []
     where
         go '_' (Nothing : os) = error "two holes in an identifier"
         go '_' os             = Nothing : os
@@ -52,21 +54,19 @@ opParts = foldr go []
 
 type PrecedenceLevel = Map Fixity [ Operator ]
 
+ops :: [ PrecedenceLevel ]
 ops = map ($ empty)
-        [ add  Post         [opParts "!_"]
-        , add (Inf ALeft)   [opParts "_+_", opParts "_-_"]
-        , add (Inf ANon)    [opParts "_==_"]
-        , add (Inf ARight)  [opParts "_/\\_"]
-        , add  Pre          [opParts "if_then_else_"]
+        [ add  Post         [strOp "!_"]
+        , add (Inf ALeft)   [strOp "_+_", strOp "_-_"]
+        , add (Inf ANon)    [strOp "_==_"]
+        , add (Inf ARight)  [strOp "_/\\_"]
+        , add  Pre          [strOp "if_then_else_"]
         ]
     where
         add = insertWith (++)
 
--- toExprs :: String -> [Expr]
--- toExprs = fmap Id . words
-
-toExprs :: String -> Expr
-toExprs = flatten . Apply . fst . func . words
+toExpr :: String -> Expr
+toExpr = flattenExpr . Apply . fst . func . words
     where
         func wrds = case wrds of
             w : ws -> case w of
@@ -76,22 +76,28 @@ toExprs = flatten . Apply . fst . func . words
                 where
                     (xs, left) = func ws
             _      -> ([], [])
-        flatten :: Expr -> Expr
-        flatten ex = case ex of
-            Apply [x] -> flatten x
-            Apply xs  -> Apply (map flatten xs)
-            _         -> ex
+
+flattenExpr :: Expr -> Expr
+flattenExpr ex = case ex of
+    Apply [x] -> flattenExpr x
+    Apply xs  -> Apply (map flattenExpr xs)
+    _         -> ex
 
 
-t0 = toExprs "if f a then 2 else if b then 3 else 4"
-t1 = toExprs "a /\\ b c /\\ d e f /\\ g"
-t2 = toExprs "if a /\\ b then c else d /\\ e f"
-t3 = toExprs "a == b /\\ c d == e f"
-t4 = toExprs "a == ( if b c then d /\\ if e then f else g else h == i )"
-t5 = toExprs "a + b - c + d"
-t7 = toExprs "a == b + c /\\ d == e"
+unApply :: Expr -> [Expr]
+unApply ex = case ex of
+    Apply xs  -> xs
+    otherwise -> [ex]
 
-t6 = toExprs "if a + b == c - d + e - f g /\\ h == i then j else k"
+t0 = unApply $ toExpr "if f a then 2 else if b then 3 else 4"
+t1 = unApply $ toExpr "a /\\ b c /\\ d e f /\\ g"
+t2 = unApply $ toExpr "if a /\\ b then c else d /\\ e f"
+t3 = unApply $ toExpr "a == b /\\ c d == e f"
+t4 = unApply $ toExpr "a == ( if b c then d /\\ if e then f else g else h == i )"
+t5 = unApply $ toExpr "a + b - c + d"
+t7 = unApply $ toExpr "a == b + c /\\ d == e"
+
+t6 = unApply $ toExpr "if a + b == c - d + e - f g /\\ h == i then j else k"
 t6' = Right $ Apply
         [Id "if_then_else_",Apply
                 [Id "_/\\_",Apply
@@ -157,12 +163,8 @@ iden s = satisfy testTok
             Id i | i == s -> True
             _             -> False
 
--- type OpPart   = Maybe String
--- type Operator = [OpPart]
-
 choiceTry :: Stream s m t => [ParsecT s u m a] -> ParsecT s u m a
 choiceTry = choice . map try
-
 
 -- type OpPart = Maybe String
 -- type Operator = [OpPart]
@@ -177,9 +179,31 @@ infops ass = maybe [] id . lookup (Inf ass)
 rightops :: PrecedenceLevel -> [Operator]
 rightops lvl = maybe [] id (lookup Pre lvl) ++ infops ARight lvl
 
+leftops :: PrecedenceLevel -> [Operator]
+leftops lvl = maybe [] id (lookup Post lvl) ++ infops ALeft lvl
+
 nonops :: PrecedenceLevel -> [Operator]
 nonops = infops ANon
 
+genn :: [ PrecedenceLevel ] -> PExpr
+genn lvls = exprparser
+    where
+        opsParts :: [String]
+        opsParts = concatMap operatorParts lvls
+
+        exprparser :: PExpr
+        exprparser = bottomparser exprparser
+
+        bottomparser :: PExpr -> PExpr
+        bottomparser expr = flattenExpr <$> Apply <$> many1 identifier
+            where
+                identifier :: PExpr
+                identifier = satisfy (testTk opsParts)
+                    where
+                        testTk pts tk = case tk of
+                            Id s
+                                | s `elem` pts -> False
+                            otherwise          -> True
 {-
 genPar :: [PrecedenceLevel] -> PExpr
 genPar lvls = exprparser
