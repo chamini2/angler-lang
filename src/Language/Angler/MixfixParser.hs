@@ -194,43 +194,41 @@ nonops = infops ANon
 genn :: [ PrecedenceLevel ] -> PExpr
 genn lvls = exprParser
     where
-        opsParts :: [String]
-        opsParts = concatMap operatorParts lvls
 
         exprParser :: PExpr
-        exprParser = choiceTry (map ($ exprParser) parsers)
+        exprParser = choiceTry parsers
             where
-                parsers :: [PExpr -> PExpr]
+                parsers :: [PExpr]
                 parsers = foldr go [bottomParser] (map pParser lvls)
                     where
-                        go :: ([PExpr -> PExpr] -> PExpr -> PExpr)
-                           -> [PExpr -> PExpr]
-                           -> [PExpr -> PExpr]
+                        go :: ([PExpr] -> PExpr) -> [PExpr] -> [PExpr]
                         go pp acts = pp acts : acts
 
-        bottomParser :: PExpr -> PExpr
-        bottomParser expr = flattenExpr <$> Apply <$> many1 identifier
+        bottomParser :: PExpr
+        bottomParser = flattenExpr <$> Apply <$> many1 identifier
             where
                 identifier :: PExpr
-                identifier = satisfy (testTk opsParts)
+                identifier = satisfy testTk
                     where
-                        testTk pts tk = case tk of
-                                Id s
-                                    | s `elem` pts -> False
-                                _                  -> True
+                        testTk :: Expr -> Bool
+                        testTk tk = case tk of
+                                Id str -> str `notElem` opsParts
+                                _      -> True
+                        opsParts :: [String]
+                        opsParts = concatMap operatorParts lvls
 
-        pParser :: PrecedenceLevel -> [PExpr -> PExpr] -> PExpr -> PExpr
-        pParser lvl below expr = try nonAssocParser
+        pParser :: PrecedenceLevel -> [PExpr] -> PExpr
+        pParser lvl below = try nonAssocParser
                             --  <|> try rightAssocParser
                             --  <|> try leftAssocParser
             where
                 pParser' :: PExpr
-                pParser' = choiceTry (map ($ expr) below)
+                pParser' = choiceTry below -- <|> closedPartParser
 
                 nonAssocParser :: PExpr
                 nonAssocParser = choiceTry $ flip map (nonops lvl) $ \op -> do
                         l    <- if nothingHead op then pure <$> pParser' else return []
-                        clsd <- closedPartParser expr (cleanOp op)
+                        clsd <- closedPartParser (cleanOp op)
                         r    <- if nothingLast op then pure <$> pParser' else return []
                         return (Apply $ [Id (opStr op)] ++ l ++ clsd ++ r)
                     where
@@ -238,8 +236,8 @@ genn lvls = exprParser
                         nothingHead = isNothing . head
                         nothingLast = isNothing . last
 
-        closedPartParser :: PExpr -> Operator -> PLExpr
-        closedPartParser expr = foldr go (fail "end of treat")
+        closedPartParser :: Operator -> PLExpr
+        closedPartParser = foldr go (return [])
             where
                 go :: OpPart -> PLExpr -> PLExpr
                 go mprt act = (++) <$> lst mprt <*> act
@@ -247,20 +245,7 @@ genn lvls = exprParser
                         lst :: OpPart -> PLExpr
                         lst mprt = case mprt of
                             Just prt -> iden prt >> return []
-                            _        -> pure <$> expr   -- [ expr ]
-        -- closedPartParser :: PExpr -> [Operator] -> PLExpr
-        -- closedPartParser expr = choiceTry . over traverse treat
-        --     where
-        --         treat :: [OpPart] -> PLExpr
-        --         treat = foldr go (fail "end of treat")
-        --             where
-        --                 go :: OpPart -> PLExpr -> PLExpr
-        --                 go mprt act = (++) <$> lst mprt <*> act
-        --                     where
-        --                         lst :: OpPart -> PLExpr
-        --                         lst mprt = case mprt of
-        --                             Just prt -> iden prt >> return []
-        --                             _        -> pure <$> expr
+                            _        -> pure <$> exprParser     -- [ expr ]
 
 {-
 genPar :: [PrecedenceLevel] -> PExpr
