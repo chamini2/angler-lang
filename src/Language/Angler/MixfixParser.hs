@@ -11,9 +11,9 @@ import Text.Parsec hiding (satisfy)
 import Control.Applicative ((<*>), liftA, liftA2)
 import Control.Lens hiding (op)
 
-import Debug.Trace
-
 import Prelude hiding (lookup)
+
+import Debug.Trace
 
 data Expr
   = Apply [Expr]
@@ -53,6 +53,12 @@ strOp = foldr go []
         go c   []             = Just [c] : []
 
 type PrecedenceLevel = Map Fixity [ Operator ]
+
+ops' :: [ PrecedenceLevel ]
+ops' = map ($ empty)
+        [ insertWith (++) (Inf ANon) [strOp "_<_>_"]
+        , insertWith (++) (Inf ANon) [strOp "_/\\_"]
+        ]
 
 ops :: [ PrecedenceLevel ]
 ops = map ($ empty)
@@ -186,24 +192,76 @@ nonops :: PrecedenceLevel -> [Operator]
 nonops = infops ANon
 
 genn :: [ PrecedenceLevel ] -> PExpr
-genn lvls = exprparser
+genn lvls = exprParser
     where
         opsParts :: [String]
         opsParts = concatMap operatorParts lvls
 
-        exprparser :: PExpr
-        exprparser = bottomparser exprparser
+        exprParser :: PExpr
+        exprParser = choiceTry (map ($ (fail "lol")) parsers)
+            where
+                parsers :: [PExpr -> PExpr]
+                parsers = foldr go [bottomParser] (map pParser lvls)
+                    where
+                        go :: ([PExpr -> PExpr] -> PExpr -> PExpr)
+                           -> [PExpr -> PExpr]
+                           -> [PExpr -> PExpr]
+                        go pp acts = pp acts : acts
 
-        bottomparser :: PExpr -> PExpr
-        bottomparser expr = flattenExpr <$> Apply <$> many1 identifier
+        bottomParser :: PExpr -> PExpr
+        bottomParser expr = flattenExpr <$> Apply <$> many1 identifier
             where
                 identifier :: PExpr
                 identifier = satisfy (testTk opsParts)
                     where
                         testTk pts tk = case tk of
-                            Id s
-                                | s `elem` pts -> False
-                            otherwise          -> True
+                                Id s
+                                    | s `elem` pts -> False
+                                _                  -> True
+
+        pParser :: PrecedenceLevel -> [PExpr -> PExpr] -> PExpr -> PExpr
+        pParser lvl below expr = try nonAssocParser
+                            --  <|> try rightAssocParser
+                            --  <|> try leftAssocParser
+            where
+                pParser' :: PExpr
+                pParser' = choiceTry (map ($ expr) below)
+
+                nonAssocParser :: PExpr
+                nonAssocParser = choiceTry $ flip map (nonops lvl) $ \op -> do
+                        l    <- if nothingHead op then pure <$> pParser' else return []
+                        clsd <- closedPartParser expr (cleanOp op)
+                        r    <- if nothingLast op then pure <$> pParser' else return []
+                        return (Apply $ [Id (opStr op)] ++ l ++ clsd ++ r)
+                    where
+                        cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
+                        nothingHead = isNothing . head
+                        nothingLast = isNothing . last
+
+        closedPartParser :: PExpr -> Operator -> PLExpr
+        closedPartParser expr = foldr go (fail "end of treat")
+            where
+                go :: OpPart -> PLExpr -> PLExpr
+                go mprt act = (++) <$> lst mprt <*> act
+                    where
+                        lst :: OpPart -> PLExpr
+                        lst mprt = case mprt of
+                            Just prt -> iden prt >> return []
+                            _        -> pure <$> expr   -- [ expr ]
+        -- closedPartParser :: PExpr -> [Operator] -> PLExpr
+        -- closedPartParser expr = choiceTry . over traverse treat
+        --     where
+        --         treat :: [OpPart] -> PLExpr
+        --         treat = foldr go (fail "end of treat")
+        --             where
+        --                 go :: OpPart -> PLExpr -> PLExpr
+        --                 go mprt act = (++) <$> lst mprt <*> act
+        --                     where
+        --                         lst :: OpPart -> PLExpr
+        --                         lst mprt = case mprt of
+        --                             Just prt -> iden prt >> return []
+        --                             _        -> pure <$> expr
+
 {-
 genPar :: [PrecedenceLevel] -> PExpr
 genPar lvls = exprparser
@@ -271,10 +329,10 @@ genPar lvls = exprparser
                 leftparser = undefined
 
                 makeClosedPart :: [(String, Operator)] -> PLExpr
-                makeClosedPart = choicet . over traverse treat' --(treat . over (_2.traverse) (maybe expr' iden'))
+                makeClosedPart = choicet . over traverse treat'
                     where
                         treat' :: (String, [OpPart]) -> PLExpr
-                        treat' (opnm, prts) = (:) (Id opnm) <$> foldr go (fail "end of treat") prts
+                        treat' (opnm, prts) = cons (Id opnm) <$> foldr go (fail "end of treat") prts
                             where
                                 go :: OpPart -> PLExpr -> PLExpr
                                 go mprt act = (++) <$> lst mprt <*> act
