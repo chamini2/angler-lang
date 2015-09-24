@@ -338,7 +338,7 @@ instance PrettyShow (Expression a) where
                 --                 Lit {}          -> pshow expr
                 --                 Exists {}       -> pshow expr
                 --                 ImplicitExpr {} -> pshow expr
-                --                 _      -> string "(" >> pshow expr >> string ")"
+                --                 _               -> string "(" >> pshow expr >> string ")"
                 Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
                 Let bdy expr _      -> do
                         raise >> line

@@ -34,10 +34,10 @@ data SrcLoc
   deriving Show
 
 locMove :: SrcLoc -> Char -> SrcLoc
-locMove (SrcLoc file line col) chr = case chr of
-        '\t' -> SrcLoc file line      (((col+3) `div` 4)*4 + 1)       -- tabs have size 4
-        '\n' -> SrcLoc file (line+1)  1
-        _    -> SrcLoc file line      (col+1)
+locMove (SrcLoc file l c) chr = case chr of
+        '\t' -> SrcLoc file l      (((c+3) `div` 4)*4 + 1)  -- tabs have size 4
+        '\n' -> SrcLoc file (l+1)  1
+        _    -> SrcLoc file l      (c+1)
 
 -- used for errors after the lexer
 data SrcSpan

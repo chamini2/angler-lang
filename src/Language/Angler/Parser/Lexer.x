@@ -281,10 +281,10 @@ newLayoutContext tk span _buf len = do
         ctx <- use lp_context
         case ctx of
                 Layout prev_off : _
-                        | prev_off >= offset ->
-                                -- token is indented to the left of the previous context.
-                                -- we must generate a {} sequence now.
-                                pushLP lp_lex_state empty_layout >> return (Loc span tk)
+                    | prev_off >= offset ->
+                        -- token is indented to the left of the previous context.
+                        -- we must generate a {} sequence now.
+                        pushLP lp_lex_state empty_layout >> return (Loc span tk)
                 _ -> pushLP lp_context (Layout offset) >> return (Loc span tk)
 
 popContext :: LP ()
