@@ -56,9 +56,13 @@ type PrecedenceLevel = Map Fixity [ Operator ]
 
 ops' :: [ PrecedenceLevel ]
 ops' = map ($ empty)
-        [ insertWith (++) (Inf ANon) [strOp "_<_>_"]
-        , insertWith (++) (Inf ANon) [strOp "_/\\_"]
+        [ add (Inf ANon) [strOp "_<_>_"]
+        , add (Inf ANon) [strOp "_/\\_"]
+        , add  Closed    [strOp "<<_>>"]
+        , add  Closed    [strOp "(^_^)"]
         ]
+    where
+        add = insertWith (++)
 
 ops :: [ PrecedenceLevel ]
 ops = map ($ empty)
@@ -191,6 +195,9 @@ leftops lvl = maybe [] id (lookup Post lvl) ++ infops ALeft lvl
 nonops :: PrecedenceLevel -> [Operator]
 nonops = infops ANon
 
+closedops :: PrecedenceLevel -> [Operator]
+closedops = maybe [] id . lookup Closed
+
 genn :: [ PrecedenceLevel ] -> PExpr
 genn lvls = exprParser
     where
@@ -205,7 +212,7 @@ genn lvls = exprParser
                         go pp acts = pp acts : acts
 
         bottomParser :: PExpr
-        bottomParser = flattenExpr <$> Apply <$> many1 identifier
+        bottomParser = flattenExpr <$> Apply <$> many1 (identifier <|> closedParser)
             where
                 identifier :: PExpr
                 identifier = satisfy testTk
@@ -217,13 +224,23 @@ genn lvls = exprParser
                         opsParts :: [String]
                         opsParts = concatMap operatorParts lvls
 
+                closedParser :: PExpr
+                closedParser = choiceTry (map parseOp ops)
+                    where
+                        parseOp :: Operator -> PExpr
+                        parseOp op = do
+                                clsd <- closedPartParser op
+                                return (Apply $ [Id (opStr op)] ++ clsd)
+                        ops :: [Operator]
+                        ops = concatMap closedops lvls
+
         pParser :: PrecedenceLevel -> [PExpr] -> PExpr
         pParser lvl below = try nonAssocParser
-                            --  <|> try rightAssocParser
-                            --  <|> try leftAssocParser
+                        -- <|> try rightAssocParser
+                        -- <|> try leftAssocParser
             where
                 pParser' :: PExpr
-                pParser' = choiceTry below -- <|> closedPartParser
+                pParser' = choiceTry below
 
                 nonAssocParser :: PExpr
                 nonAssocParser = choiceTry $ flip map (nonops lvl) $ \op -> do
@@ -232,9 +249,18 @@ genn lvls = exprParser
                         r    <- if nothingLast op then pure <$> pParser' else return []
                         return (Apply $ [Id (opStr op)] ++ l ++ clsd ++ r)
                     where
+                        cleanOp :: Operator -> Operator
                         cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
+                        nothingHead :: Operator -> Bool
                         nothingHead = isNothing . head
+                        nothingLast :: Operator -> Bool
                         nothingLast = isNothing . last
+
+                rightAssocParser :: PExpr
+                rightAssocParser = undefined
+
+                leftAssocParser :: PExpr
+                leftAssocParser = undefined
 
         closedPartParser :: Operator -> PLExpr
         closedPartParser = foldr go (return [])
@@ -244,8 +270,8 @@ genn lvls = exprParser
                     where
                         lst :: OpPart -> PLExpr
                         lst mprt = case mprt of
-                            Just prt -> iden prt >> return []
-                            _        -> pure <$> exprParser     -- [ expr ]
+                                Just prt -> iden prt >> return []
+                                _        -> pure <$> exprParser
 
 {-
 genPar :: [PrecedenceLevel] -> PExpr
