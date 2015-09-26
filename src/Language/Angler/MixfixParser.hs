@@ -193,13 +193,10 @@ genn lvls = exprParser
     where
 
         exprParser :: PExpr
-        exprParser = choiceTry parsers
+        exprParser = choiceTry (foldr go [bottomParser] (map pParser lvls))
             where
-                parsers :: [PExpr]
-                parsers = foldr go [bottomParser] (map pParser lvls)
-                    where
-                        go :: ([PExpr] -> PExpr) -> [PExpr] -> [PExpr]
-                        go pp acts = pp acts : acts
+                go :: ([PExpr] -> PExpr) -> [PExpr] -> [PExpr]
+                go pp acts = pp acts : acts
 
         bottomParser :: PExpr
         bottomParser = flattenExpr <$> Apply <$> many1 (identifier <|> closedParser)
@@ -226,11 +223,14 @@ genn lvls = exprParser
 
         pParser :: PrecedenceLevel -> [PExpr] -> PExpr
         pParser lvl below = try middleParser
-                        -- <|> try rightParser
-                        -- <|> try leftParser
+                        <|> try rightParser
+                        <|> try leftParser
             where
                 pParser' :: PExpr
                 pParser' = choiceTry below
+
+                cleanOp :: Operator -> Operator
+                cleanOp op = (if isNothing (head op) then tail else id) . (if isNothing (last op) then init else id) $ op
 
                 middleParser :: PExpr
                 middleParser = choiceTry $ flip map (nonops lvl) $ \op -> do
@@ -238,34 +238,23 @@ genn lvls = exprParser
                         clsd <- closedPartParser (cleanOp op)
                         r    <- pParser'
                         return (Apply $ [Id (opStr op)] ++ [l] ++ clsd ++ [r])
-                        -- l    <- if nothingHead op then pure <$> pParser' else return []
-                        -- clsd <- closedPartParser (cleanOp op)
-                        -- r    <- if nothingLast op then pure <$> pParser' else return []
-                        -- return (Apply $ [Id (opStr op)] ++ l ++ clsd ++ r)
-                    where
-                        cleanOp :: Operator -> Operator
-                        cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
-                        nothingHead :: Operator -> Bool
-                        nothingHead = isNothing . head
-                        nothingLast :: Operator -> Bool
-                        nothingLast = isNothing . last
 
                 rightParser :: PExpr
                 rightParser = do
-                        ps <- many1 rightParser'
+                        ps <- many1 (try prefixParser <|> try rightAssocParser)
                         p  <- pParser'
                         return $ foldr (\xs x -> Apply (xs ++ [x]) ) p ps
                     where
-                        rightParser' :: PLExpr
-                        rightParser' = try prefixParser -- <|> try rightAssocParser
-                            where
-                                prefixParser :: PLExpr
-                                prefixParser = choiceTry $ flip map (prefixops lvl) $ \op -> do
-                                        clsd <- closedPartParser (cleanOp (traceShowId op))
-                                        return ([Id (opStr op)] ++ clsd)
+                        prefixParser :: PLExpr
+                        prefixParser = choiceTry $ flip map (prefixops lvl) $ \op -> do
+                                clsd <- closedPartParser (cleanOp op)
+                                return ([Id (opStr op)] ++ clsd)
 
-                                rightAssocParser :: PLExpr
-                                rightAssocParser = undefined
+                        rightAssocParser :: PLExpr
+                        rightAssocParser = choiceTry $ flip map (rightassocops lvl) $ \op -> do
+                                l    <- pParser'
+                                clsd <- closedPartParser (cleanOp op)
+                                return ([Id (opStr op)] ++ [l] ++ clsd)
 
                         cleanOp :: Operator -> Operator
                         cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
