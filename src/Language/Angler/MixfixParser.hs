@@ -34,43 +34,55 @@ makePrisms ''Assoc
 data Fixity
   = Pre
   | Post
-  | Inf Assoc
+  | Infix Assoc
   | Closed
   deriving (Eq, Show, Ord)
 makePrisms ''Fixity
 
 
 opStr :: Operator -> String
-opStr = foldr (\m s -> (maybe "_" id m) ++ s) ""
+opStr = concatMap (maybe "_" id)
 
 strOp :: String -> Operator
 strOp = foldr go []
     where
-        go '_' (Nothing : os) = error "two holes in an identifier"
-        go '_' os             = Nothing : os
-        go c   (Just o  : os) = Just (c : o) : os
-        go c   (Nothing : os) = Just [c] : Nothing : os
-        go c   []             = Just [c] : []
+        go c prts = case (c, prts) of
+                ('_', Nothing : ps) -> error "two holes in a row in an identifier"
+                ('_', _           ) -> Nothing    : prts
+                ( _ , Just p  : ps) -> Just (c:p) : ps
+                ( _ , _           ) -> Just [c]   : prts
 
 type PrecedenceLevel = Map Fixity [ Operator ]
 
+ops'' :: [ PrecedenceLevel ]
+ops'' = map ($ empty)
+        [ add  Pre         [strOp "-_"]
+        , add (Infix ANon) [strOp "_=_"]
+        , add  Closed      [strOp "[_]"]
+        , add  Pre         [strOp "if_then_else_"]
+        , add (Infix ANon) [strOp "_<_>_"]
+        ]
+    where
+        add = insertWith (++)
+
 ops' :: [ PrecedenceLevel ]
 ops' = map ($ empty)
-        [ add (Inf ANon) [strOp "_<_>_"]
-        , add (Inf ANon) [strOp "_/\\_"]
-        , add  Closed    [strOp "<<_>>"]
-        , add  Closed    [strOp "(^_^)"]
+        [ add (Infix ANon) [strOp "_<_>_"]
+        , add (Infix ANon) [strOp "_==_"]
+        , add  Closed      [strOp "<<_>>"]
+        , add  Closed      [strOp "(^_^)"]
+        , add (Infix ANon) [strOp "_<>_"]
         ]
     where
         add = insertWith (++)
 
 ops :: [ PrecedenceLevel ]
 ops = map ($ empty)
-        [ add  Post         [strOp "!_"]
-        , add (Inf ALeft)   [strOp "_+_", strOp "_-_"]
-        , add (Inf ANon)    [strOp "_==_"]
-        , add (Inf ARight)  [strOp "_/\\_"]
-        , add  Pre          [strOp "if_then_else_"]
+        [ add  Post           [strOp "_!"]
+        , add (Infix ALeft)   [strOp "_+_", strOp "_-_"]
+        , add (Infix ANon)    [strOp "_==_"]
+        , add (Infix ARight)  [strOp "_/\\_"]
+        , add  Pre            [strOp "if_then_else_"]
         ]
     where
         add = insertWith (++)
@@ -156,9 +168,9 @@ t6' = Right $ Apply
 
 -}
 
-type PExpr    = Parsec [Expr] () Expr
-type PLExpr   = Parsec [Expr] () [Expr]
-type POpExpr  = Parsec [Expr] () (Either Expr Expr)
+type PExpr   = Parsec [Expr] () Expr
+type PLExpr  = Parsec [Expr] () [Expr]
+type POpExpr = Parsec [Expr] () (Either Expr Expr)
 
 satisfy :: (Expr -> Bool) -> PExpr
 satisfy g = tokenPrim show nextPos testTok
@@ -184,13 +196,19 @@ operatorParts :: PrecedenceLevel -> [String]
 operatorParts = toListOf (traverse.traverse.traverse._Just)
 
 infops :: Assoc -> PrecedenceLevel -> [Operator]
-infops ass = maybe [] id . lookup (Inf ass)
+infops ass = maybe [] id . lookup (Infix ass)
 
-rightops :: PrecedenceLevel -> [Operator]
-rightops lvl = maybe [] id (lookup Pre lvl) ++ infops ARight lvl
+rightassocops :: PrecedenceLevel -> [Operator]
+rightassocops = infops ARight
 
-leftops :: PrecedenceLevel -> [Operator]
-leftops lvl = maybe [] id (lookup Post lvl) ++ infops ALeft lvl
+prefixops :: PrecedenceLevel -> [Operator]
+prefixops = maybe [] id . lookup Pre
+
+leftassocops :: PrecedenceLevel -> [Operator]
+leftassocops = infops ALeft
+
+postfixops :: PrecedenceLevel -> [Operator]
+postfixops = maybe [] id . lookup Post
 
 nonops :: PrecedenceLevel -> [Operator]
 nonops = infops ANon
@@ -235,19 +253,23 @@ genn lvls = exprParser
                         ops = concatMap closedops lvls
 
         pParser :: PrecedenceLevel -> [PExpr] -> PExpr
-        pParser lvl below = try nonAssocParser
-                        -- <|> try rightAssocParser
-                        -- <|> try leftAssocParser
+        pParser lvl below = try middleParser
+                        -- <|> try rightParser
+                        -- <|> try leftParser
             where
                 pParser' :: PExpr
                 pParser' = choiceTry below
 
-                nonAssocParser :: PExpr
-                nonAssocParser = choiceTry $ flip map (nonops lvl) $ \op -> do
-                        l    <- if nothingHead op then pure <$> pParser' else return []
+                middleParser :: PExpr
+                middleParser = choiceTry $ flip map (nonops lvl) $ \op -> do
+                        l    <- pParser'
                         clsd <- closedPartParser (cleanOp op)
-                        r    <- if nothingLast op then pure <$> pParser' else return []
-                        return (Apply $ [Id (opStr op)] ++ l ++ clsd ++ r)
+                        r    <- pParser'
+                        return (Apply $ [Id (opStr op)] ++ [l] ++ clsd ++ [r])
+                        -- l    <- if nothingHead op then pure <$> pParser' else return []
+                        -- clsd <- closedPartParser (cleanOp op)
+                        -- r    <- if nothingLast op then pure <$> pParser' else return []
+                        -- return (Apply $ [Id (opStr op)] ++ l ++ clsd ++ r)
                     where
                         cleanOp :: Operator -> Operator
                         cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
@@ -256,13 +278,35 @@ genn lvls = exprParser
                         nothingLast :: Operator -> Bool
                         nothingLast = isNothing . last
 
-                rightAssocParser :: PExpr
-                rightAssocParser = undefined
+                rightParser :: PExpr
+                rightParser = do
+                        ps <- many1 rightParser'
+                        p  <- pParser'
+                        return $ foldr (\xs x -> Apply (xs ++ [x]) ) p ps
+                    where
+                        rightParser' :: PLExpr
+                        rightParser' = try prefixParser -- <|> try rightAssocParser
+                            where
+                                prefixParser :: PLExpr
+                                prefixParser = choiceTry $ flip map (prefixops lvl) $ \op -> do
+                                        clsd <- closedPartParser (cleanOp (traceShowId op))
+                                        return ([Id (opStr op)] ++ clsd)
 
-                leftAssocParser :: PExpr
-                leftAssocParser = undefined
+                                rightAssocParser :: PLExpr
+                                rightAssocParser = undefined
 
-        closedPartParser :: Operator -> PLExpr
+                        cleanOp :: Operator -> Operator
+                        cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
+                        nothingHead :: Operator -> Bool
+                        nothingHead = isNothing . head
+                        nothingLast :: Operator -> Bool
+                        nothingLast = isNothing . last
+
+
+                leftParser :: PExpr
+                leftParser = undefined
+
+        closedPartParser :: [OpPart] -> PLExpr
         closedPartParser = foldr go (return [])
             where
                 go :: OpPart -> PLExpr -> PLExpr
@@ -317,7 +361,7 @@ genPar lvls = exprparser
                 guardops :: Fixity -> [(String, Operator)]
                 guardops fx = map (\(_,n,p) -> (n,p)) (filter ((==fx) . view _1) fxops)
                 infops :: Assoc -> [(String, Operator)]
-                infops = guardops . Inf
+                infops = guardops . Infix
 
                 nonparser :: PExpr
                 nonparser = if null nonops
@@ -370,7 +414,7 @@ generateParser fxs = expr
                         guardops :: Fixity -> [(String, Operator)]
                         guardops fx = map (\(_,n,p) -> (n,p)) (filter ((==fx) . view _1) fops)
                         infops :: Assoc -> [(String, Operator)]
-                        infops = guardops . Inf
+                        infops = guardops . Infix
 
                         makeChoice :: PExpr -> [(String, Operator)] -> PLExpr
                         makeChoice expr = choice . map (treat . over _2 (map (maybe expr' iden')))
