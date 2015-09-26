@@ -60,7 +60,7 @@ ops' = map ($ empty)
         , add (Infix ANon) [strOp "_==_"]
         , add  Closed      [strOp "<<_>>"]
         , add  Closed      [strOp "(^_^)"]
-        , add (Infix ANon) [strOp "_<>_"]
+        , add (Infix ALeft) [strOp "_<>_"] . add (Infix ARight) [strOp "_|_"]
         ]
     where
         add = insertWith (++)
@@ -147,7 +147,16 @@ type POpExpr = Parsec [Expr] () (Either Expr Expr)
 satisfy :: (Expr -> Bool) -> PExpr
 satisfy g = tokenPrim show nextPos testTok
     where
-        nextPos p _t _ts = p
+        nextPos p t _ts = case t of
+                Id str -> setSourceColumn p (sourceColumn p + length str)
+                Apply xs -> setSourceColumn p (sourceColumn p + inLength xs)
+            where
+                inLength :: [Expr] -> Int
+                inLength = sum . map check
+                check :: Expr -> Int
+                check x = case x of
+                    Id str -> length str
+                    Apply xs -> inLength xs
         testTok t = if g t then Just t else Nothing
 
 iden :: String -> PExpr
@@ -159,10 +168,6 @@ iden s = satisfy testTok
 
 choiceTry :: Stream s m t => [ParsecT s u m a] -> ParsecT s u m a
 choiceTry = choice . map try
-
--- type OpPart = Maybe String
--- type Operator = [OpPart]
--- type PrecedenceLevel = Map Fixity [ Operator ]
 
 operatorParts :: PrecedenceLevel -> [String]
 operatorParts = toListOf (traverse.traverse.traverse._Just)
@@ -189,7 +194,7 @@ closedops :: PrecedenceLevel -> [Operator]
 closedops = maybe [] id . lookup Closed
 
 genn :: [ PrecedenceLevel ] -> PExpr
-genn lvls = exprParser
+genn lvls = const <$> exprParser <*> eof
     where
 
         exprParser :: PExpr
