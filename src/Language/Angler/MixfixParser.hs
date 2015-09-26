@@ -256,16 +256,23 @@ genn lvls = exprParser
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ [l] ++ clsd)
 
-                        cleanOp :: Operator -> Operator
-                        cleanOp op = (if nothingHead op then tail else id) . (if nothingLast op then init else id) $ op
-                        nothingHead :: Operator -> Bool
-                        nothingHead = isNothing . head
-                        nothingLast :: Operator -> Bool
-                        nothingLast = isNothing . last
-
-
                 leftParser :: PExpr
-                leftParser = undefined
+                leftParser = do
+                        p  <- pParser'
+                        ps <- many (try postfixParser <|> try leftAssocParser)
+                        return $ foldl' (\x (op:xs) -> Apply (op : x : xs) ) p ps
+                    where
+                        postfixParser :: PLExpr
+                        postfixParser = choiceTry $ flip map (postfixops lvl) $ \op -> do
+                                clsd <- closedPartParser (cleanOp op)
+                                return ([Id (opStr op)] ++ clsd)
+
+                        leftAssocParser :: PLExpr
+                        leftAssocParser = choiceTry $ flip map (leftassocops lvl) $ \op -> do
+                                clsd <- closedPartParser (cleanOp op)
+                                r    <- pParser'
+                                return ([Id (opStr op)] ++ clsd ++ [r])
+
 
         closedPartParser :: [OpPart] -> PLExpr
         closedPartParser = foldr go (return [])
