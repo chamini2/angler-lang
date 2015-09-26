@@ -199,27 +199,34 @@ genn lvls = exprParser
                 go pp acts = pp acts : acts
 
         bottomParser :: PExpr
-        bottomParser = flattenExpr <$> Apply <$> many1 (identifier <|> closedParser)
+        bottomParser = flattenExpr <$> Apply <$> (try (many1 basicBottom) <|> anyBottom)
             where
-                identifier :: PExpr
-                identifier = satisfy testTk
-                    where
-                        testTk :: Expr -> Bool
-                        testTk tk = case tk of
-                                Id str -> str `notElem` opsParts
-                                _      -> True
-                        opsParts :: [String]
-                        opsParts = concatMap operatorParts lvls
+                -- This may or not be recommended
+                anyBottom :: PLExpr
+                anyBottom = cons <$> satisfy (const True) <*> many basicBottom
 
-                closedParser :: PExpr
-                closedParser = choiceTry (map parseOp ops)
+                basicBottom :: PExpr
+                basicBottom = try nonPartParser <|> try closedParser
                     where
-                        parseOp :: Operator -> PExpr
-                        parseOp op = do
-                                clsd <- closedPartParser op
-                                return (Apply $ [Id (opStr op)] ++ clsd)
-                        ops :: [Operator]
-                        ops = concatMap closedops lvls
+                        nonPartParser :: PExpr
+                        nonPartParser = satisfy testTk
+                            where
+                                testTk :: Expr -> Bool
+                                testTk tk = case tk of
+                                        Id str -> str `notElem` opsParts
+                                        _      -> True
+                                opsParts :: [String]
+                                opsParts = concatMap operatorParts lvls
+
+                        closedParser :: PExpr
+                        closedParser = choiceTry (map parseOp ops)
+                            where
+                                parseOp :: Operator -> PExpr
+                                parseOp op = do
+                                        clsd <- closedPartParser op
+                                        return (Apply $ [Id (opStr op)] ++ clsd)
+                                ops :: [Operator]
+                                ops = concatMap closedops lvls
 
         pParser :: PrecedenceLevel -> [PExpr] -> PExpr
         pParser lvl below = try middleParser
