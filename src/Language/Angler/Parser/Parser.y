@@ -316,9 +316,9 @@ Body :: { BodySpan }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' Expression_(expid)
                                 { pure $ Forall $2 $4
                                     (srcSpanSpan $1 ($4^.exp_annot)) }
-                | 'exists' '(' TypeBind ';' Expression_(expid) ')'
-                                { pure $ Exists $3 $5
-                                    (srcSpanSpan $1 $6) }
+                | 'exists' TypeBind ';' Expression_(expid)
+                                { pure $ Exists $2 $4
+                                    (srcSpanSpan $1 $3) }
                 | 'select' TypeBind_(expid)
                                 { pure $ Select $2
                                     (srcSpanSpan $1 ($2^.typ_annot)) }
@@ -347,12 +347,12 @@ Body :: { BodySpan }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "forall")
                                     (srcSpanSpan $1 $3) }
-                | 'exists' '(' {- empty -} ';'
+                | 'exists' {- empty -} ';'
                                 {% throwPError (PErrNoVariableIn "exists")
-                                    (srcSpanSpan $1 $3) }
-                | 'exists' '(' TypeBind ';' {- empty -} ')'
+                                    (srcSpanSpan $1 $2) }
+                | 'exists' TypeBind ';' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "exists")
-                                        (srcSpanSpan $1 $5) }
+                                        (srcSpanSpan $1 $3) }
                 | 'select' Expression_(expid)
                                 {% throwPError (PErrNoBindIn "select")
                                         (srcSpanSpan $1 ($2^.exp_annot))}

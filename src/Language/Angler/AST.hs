@@ -353,8 +353,8 @@ instance PrettyShow (Expression a) where
                         lower
                 Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
                                                         >> pshow expr'
-                Exists typ expr' _  -> string "exists (" >> pshow typ >> string ";"
-                                                         >> pshow expr' >> string ")"
+                Exists typ expr' _  -> string "exists " >> pshow typ >> string ";"
+                                                        >> pshow expr'
                 Select typ _        -> string "select " >> pshow typ
                 ImplicitExpr imps _ -> string "{" >> pshows' " " imps >> string "}"
             where
