@@ -8,7 +8,7 @@ import Data.Map.Strict (Map, fromList, empty, lookup, insertWith)
 
 import Text.Parsec hiding (satisfy)
 
-import Control.Applicative ((<*>), liftA, liftA2)
+import Control.Applicative ((<*>), (<*), liftA, liftA2)
 import Control.Lens hiding (op)
 
 import Prelude hiding (lookup)
@@ -65,7 +65,7 @@ ops' = map ($ empty)
     where
         add = insertWith (++)
 
--- from strong to weak (I thought this would be the other way around)
+-- from weak to strong
 ops :: [ PrecedenceLevel ]
 ops = map ($ empty)
         [ add  Pre            [strOp "if_then_else_"]
@@ -140,13 +140,12 @@ t6' = Right $ Apply
                 Id "k"
         ]
 
-type PExpr   = Parsec [Expr] () Expr
-type PLExpr  = Parsec [Expr] () [Expr]
-type POpExpr = Parsec [Expr] () (Either Expr Expr)
+type P a     = Parsec [Expr] () a
 
-satisfy :: (Expr -> Bool) -> PExpr
+satisfy :: (Expr -> Bool) -> P Expr
 satisfy g = tokenPrim show nextPos testTok
     where
+        testTok t = if g t then Just t else Nothing
         nextPos p t _ts = case t of
                 Id str -> setSourceColumn p (sourceColumn p + length str)
                 Apply xs -> setSourceColumn p (sourceColumn p + inLength xs)
@@ -157,14 +156,13 @@ satisfy g = tokenPrim show nextPos testTok
                 check x = case x of
                     Id str -> length str
                     Apply xs -> inLength xs
-        testTok t = if g t then Just t else Nothing
 
-iden :: String -> PExpr
+iden :: String -> P Expr
 iden s = satisfy testTok
     where
         testTok t = case t of
-            Id i | i == s -> True
-            _             -> False
+            Id i -> i == s
+            _    -> False
 
 choiceTry :: Stream s m t => [ParsecT s u m a] -> ParsecT s u m a
 choiceTry = choice . map try
@@ -193,106 +191,114 @@ nonops = infops ANon
 closedops :: PrecedenceLevel -> [Operator]
 closedops = maybe [] id . lookup Closed
 
-genn :: [ PrecedenceLevel ] -> PExpr
-genn lvls = const <$> exprParser <*> eof
+genn :: [ PrecedenceLevel ] -> P Expr
+genn lvls = exprParser <* eof
     where
 
-        exprParser :: PExpr
+        exprParser :: P Expr
         exprParser = choiceTry (foldr go [bottomParser] (map pParser lvls))
             where
-                go :: ([PExpr] -> PExpr) -> [PExpr] -> [PExpr]
+                go :: ([P Expr] -> P Expr) -> [P Expr] -> [P Expr]
                 go pp acts = pp acts : acts
 
-        bottomParser :: PExpr
+        bottomParser :: P Expr
         bottomParser = flattenExpr <$> Apply <$> (try (many1 basicBottom) <|> anyBottom)
             where
                 -- This may or not be recommended
-                anyBottom :: PLExpr
-                anyBottom = cons <$> satisfy (const True) <*> many basicBottom
+                anyBottom :: P [Expr]
+                anyBottom = cons <$> anyToken <*> many basicBottom
+                    where
+                        anyToken = satisfy (const True)
 
-                basicBottom :: PExpr
+                basicBottom :: P Expr
                 basicBottom = try nonPartParser <|> try closedParser
                     where
-                        nonPartParser :: PExpr
-                        nonPartParser = satisfy testTk
+                        nonPartParser :: P Expr
+                        nonPartParser = tokenPrim show (\p _ _ -> p) testTok
                             where
-                                testTk :: Expr -> Bool
-                                testTk tk = case tk of
-                                        Id str -> str `notElem` opsParts
-                                        _      -> True
-                                opsParts :: [String]
-                                opsParts = concatMap operatorParts lvls
+                                testTok :: Expr -> Maybe Expr
+                                testTok tk = case tk of
+                                        Id str   -> if str `elem` opsParts then Nothing else Just tk
+                                        Apply xs -> unEither (parse (genn lvls) "" xs)
+                                        -- use getInput, updateState, setInput
+                                    where
+                                        opsParts :: [String]
+                                        opsParts = concatMap operatorParts lvls
+                                        unEither :: Either b a -> Maybe a
+                                        unEither ei = case ei of
+                                                Right x -> Just x
+                                                _       -> Nothing
 
-                        closedParser :: PExpr
+                        closedParser :: P Expr
                         closedParser = choiceTry (map parseOp ops)
                             where
-                                parseOp :: Operator -> PExpr
+                                parseOp :: Operator -> P Expr
                                 parseOp op = do
                                         clsd <- closedPartParser op
                                         return (Apply $ [Id (opStr op)] ++ clsd)
                                 ops :: [Operator]
                                 ops = concatMap closedops lvls
 
-        pParser :: PrecedenceLevel -> [PExpr] -> PExpr
+        pParser :: PrecedenceLevel -> [P Expr] -> P Expr
         pParser lvl below = try middleParser
                         <|> try rightParser
                         <|> try leftParser
             where
-                pParser' :: PExpr
+                pParser' :: P Expr
                 pParser' = choiceTry below
 
                 cleanOp :: Operator -> Operator
                 cleanOp op = (if isNothing (head op) then tail else id) . (if isNothing (last op) then init else id) $ op
 
-                middleParser :: PExpr
+                middleParser :: P Expr
                 middleParser = choiceTry $ flip map (nonops lvl) $ \op -> do
                         l    <- pParser'
                         clsd <- closedPartParser (cleanOp op)
                         r    <- pParser'
                         return (Apply $ [Id (opStr op)] ++ [l] ++ clsd ++ [r])
 
-                rightParser :: PExpr
+                rightParser :: P Expr
                 rightParser = do
                         ps <- many1 (try prefixParser <|> try rightAssocParser)
                         p  <- pParser'
                         return $ foldr (\xs x -> Apply (xs ++ [x]) ) p ps
                     where
-                        prefixParser :: PLExpr
+                        prefixParser :: P [Expr]
                         prefixParser = choiceTry $ flip map (prefixops lvl) $ \op -> do
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ clsd)
 
-                        rightAssocParser :: PLExpr
+                        rightAssocParser :: P [Expr]
                         rightAssocParser = choiceTry $ flip map (rightassocops lvl) $ \op -> do
                                 l    <- pParser'
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ [l] ++ clsd)
 
-                leftParser :: PExpr
+                leftParser :: P Expr
                 leftParser = do
                         p  <- pParser'
                         ps <- many (try postfixParser <|> try leftAssocParser)
                         return $ foldl' (\x (op:xs) -> Apply (op : x : xs) ) p ps
                     where
-                        postfixParser :: PLExpr
+                        postfixParser :: P [Expr]
                         postfixParser = choiceTry $ flip map (postfixops lvl) $ \op -> do
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ clsd)
 
-                        leftAssocParser :: PLExpr
+                        leftAssocParser :: P [Expr]
                         leftAssocParser = choiceTry $ flip map (leftassocops lvl) $ \op -> do
                                 clsd <- closedPartParser (cleanOp op)
                                 r    <- pParser'
                                 return ([Id (opStr op)] ++ clsd ++ [r])
 
 
-        closedPartParser :: [OpPart] -> PLExpr
+        closedPartParser :: [OpPart] -> P [Expr]
         closedPartParser = foldr go (return [])
             where
-                go :: OpPart -> PLExpr -> PLExpr
+                go :: OpPart -> P [Expr] -> P [Expr]
                 go mprt act = (++) <$> lst mprt <*> act
                     where
-                        lst :: OpPart -> PLExpr
+                        lst :: OpPart -> P [Expr]
                         lst mprt = case mprt of
                                 Just prt -> iden prt >> return []
-                                _        -> pure <$> exprParser
+                                _        -> (\x -> cons x []) <$> exprParser
