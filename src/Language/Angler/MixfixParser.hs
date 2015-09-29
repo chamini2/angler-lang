@@ -18,6 +18,7 @@ import Debug.Trace
 data Expr
   = Apply [Expr]
   | Id String
+  | Forall String Expr Expr
   deriving (Eq, Show)
 
 type OpPart = Maybe String
@@ -90,25 +91,26 @@ toExpr = flattenExpr . Apply . fst . func . words
 
 flattenExpr :: Expr -> Expr
 flattenExpr ex = case ex of
-    Apply [x] -> flattenExpr x
-    Apply xs  -> Apply (map flattenExpr xs)
-    _         -> ex
+    Apply [x]    -> flattenExpr x
+    Apply xs     -> Apply (map flattenExpr xs)
+    Forall s t x -> Forall s (flattenExpr t) (flattenExpr x)
+    Id x         -> Id x
 
+t0 = toExpr "if f a then 2 else if b then 3 else 4"
+t1 = toExpr "a /\\ b c /\\ d e f /\\ g"
+t2 = toExpr "if a /\\ b then c else d /\\ e f"
+t3 = toExpr "a == b /\\ c d == e f"
+t4 = toExpr "a == ( if b c then d /\\ if e then f else g else h == i )"
+t5 = toExpr "a + b - c + d"
+t7 = toExpr "a == b + c /\\ d == e"
 
-unApply :: Expr -> [Expr]
-unApply ex = case ex of
-    Apply xs  -> xs
-    otherwise -> [ex]
+ops8 = [ insertWith (++) (Infix ARight) [strOp "_->_"] empty ]
+t8 = Apply [Forall "t" (Id "Type") (Forall "n" (Id "Nat")
+        (Apply [ Apply [Id "t", Id "->", Id "Bool"] , Id "->", Id "Vect"
+               , Id "n", Id "t" , Id "->", Forall "m" (Id "Nat")
+                        (Apply [Id "m", Id "->", Id "t"]) ] ) )]
 
-t0 = unApply $ toExpr "if f a then 2 else if b then 3 else 4"
-t1 = unApply $ toExpr "a /\\ b c /\\ d e f /\\ g"
-t2 = unApply $ toExpr "if a /\\ b then c else d /\\ e f"
-t3 = unApply $ toExpr "a == b /\\ c d == e f"
-t4 = unApply $ toExpr "a == ( if b c then d /\\ if e then f else g else h == i )"
-t5 = unApply $ toExpr "a + b - c + d"
-t7 = unApply $ toExpr "a == b + c /\\ d == e"
-
-t6 = unApply $ toExpr "if a + b == c - d + e - f g /\\ h == i then j else k"
+t6 = toExpr "if a + b == c - d + e - f g /\\ h == i then j else k"
 t6' = Right $ Apply
         [Id "if_then_else_",Apply
                 [Id "_/\\_",Apply
@@ -147,16 +149,13 @@ satisfy :: (Expr -> Bool) -> P Expr
 satisfy g = tokenPrim show nextPos testTok
     where
         testTok t = if g t then Just t else Nothing
-        nextPos p t _ts = case t of
-                Id str -> setSourceColumn p (sourceColumn p + length str)
-                Apply xs -> setSourceColumn p (sourceColumn p + inLength xs)
+        nextPos p t _ts = setSourceColumn p (sourceColumn p + getLength t)
             where
-                inLength :: [Expr] -> Int
-                inLength = sum . map check
-                check :: Expr -> Int
-                check x = case x of
+                getLength :: Expr -> Int
+                getLength x = case x of
                     Id str -> length str
-                    Apply xs -> inLength xs
+                    Apply xs -> sum . map getLength $ xs
+                    Forall str t x -> length str + getLength t + getLength x
 
 iden :: String -> P Expr
 iden s = satisfy testTok
