@@ -2,6 +2,7 @@
 {-# OPTIONS_GHC -w #-}
 module Rewrite where
 
+import Data.Either
 import Data.Foldable
 import Data.Maybe
 import Data.Map.Strict (Map, fromList, empty, lookup, insertWith)
@@ -191,7 +192,22 @@ nonops = infops ANon
 closedops :: PrecedenceLevel -> [Operator]
 closedops = maybe [] id . lookup Closed
 
-genn :: [ PrecedenceLevel ] -> P Expr
+parseMixfix :: OperatorsPrecedence -> Expr -> Either ParseError Expr
+parseMixfix prc ex = case ex of
+        Id str   -> return (Id str)
+        Apply xs -> let xsEits = fmap (parseMixfix prc) xs
+                    in case find isLeft xsEits of
+                        Just lf -> lf
+                        Nothing -> precParser (toListOf (traverse._Right) xsEits)
+        Forall str typ x -> case (parseMixfix prc typ, parseMixfix prc x) of
+                (Right t', Right x') -> Right (Forall str t' x')
+                (Left err, _       ) -> Left err
+                (_       , Left err) -> Left err
+    where
+        precParser :: [Expr] -> Either ParseError Expr
+        precParser = parse (genn prc) ""
+
+genn :: OperatorsPrecedence -> P Expr
 genn lvls = exprParser <* eof
     where
 
