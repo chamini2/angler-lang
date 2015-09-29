@@ -21,7 +21,6 @@ data Expr
   deriving (Eq, Show)
 
 type OpPart = Maybe String
-
 type Operator = [OpPart]
 
 data Assoc
@@ -39,7 +38,6 @@ data Fixity
   deriving (Eq, Show, Ord)
 makePrisms ''Fixity
 
-
 opStr :: Operator -> String
 opStr = concatMap (maybe "_" id)
 
@@ -53,8 +51,9 @@ strOp = foldr go []
                 ( _ , _           ) -> Just [c]   : prts
 
 type PrecedenceLevel = Map Fixity [ Operator ]
+type OperatorsPrecedence = [ PrecedenceLevel ]
 
-ops' :: [ PrecedenceLevel ]
+ops' :: OperatorsPrecedence
 ops' = map ($ empty)
         [ add (Infix ANon) [strOp "_<_>_"]
         , add (Infix ANon) [strOp "_==_"]
@@ -66,7 +65,7 @@ ops' = map ($ empty)
         add = insertWith (++)
 
 -- from weak to strong
-ops :: [ PrecedenceLevel ]
+ops :: OperatorsPrecedence
 ops = map ($ empty)
         [ add  Pre            [strOp "if_then_else_"]
         , add (Infix ARight)  [strOp "_/\\_"]
@@ -140,7 +139,9 @@ t6' = Right $ Apply
                 Id "k"
         ]
 
-type P a     = Parsec [Expr] () a
+--------------------------------------------------------------------------------
+
+type P a = Parsec [Expr] () a
 
 satisfy :: (Expr -> Bool) -> P Expr
 satisfy g = tokenPrim show nextPos testTok
@@ -202,32 +203,31 @@ genn lvls = exprParser <* eof
                 go pp acts = pp acts : acts
 
         bottomParser :: P Expr
-        bottomParser = flattenExpr <$> Apply <$> (try (many1 basicBottom) <|> anyBottom)
+        bottomParser = flattenExpr . Apply <$> many1 basicToken
+        -- bottomParser = flattenExpr . Apply <$> tokens
             where
-                -- This may or not be recommended
-                anyBottom :: P [Expr]
-                anyBottom = cons <$> anyToken <*> many basicBottom
-                    where
-                        anyToken = satisfy (const True)
+                -- This gets any token, and then continues with the basic tokens
+                -- in 'if if a then b else c' it parses 'if_then_else_ (if a) b c'
+                -- instead of giving a parse error.This behaviour may or
+                -- may not be recommended.
+                tokens :: P [Expr]
+                tokens = cons <$> (try basicToken <|> try anyToken) <*> many basicToken
 
-                basicBottom :: P Expr
-                basicBottom = try nonPartParser <|> try closedParser
+                anyToken :: P Expr
+                anyToken = satisfy (const True)
+
+                basicToken :: P Expr
+                basicToken = try nonPartParser <|> try closedParser
                     where
                         nonPartParser :: P Expr
-                        nonPartParser = tokenPrim show (\p _ _ -> p) testTok
+                        nonPartParser = satisfy testTk
                             where
-                                testTok :: Expr -> Maybe Expr
-                                testTok tk = case tk of
-                                        Id str   -> if str `elem` opsParts then Nothing else Just tk
-                                        Apply xs -> unEither (parse (genn lvls) "" xs)
-                                        -- use getInput, updateState, setInput
-                                    where
-                                        opsParts :: [String]
-                                        opsParts = concatMap operatorParts lvls
-                                        unEither :: Either b a -> Maybe a
-                                        unEither ei = case ei of
-                                                Right x -> Just x
-                                                _       -> Nothing
+                                testTk :: Expr -> Bool
+                                testTk tk = case tk of
+                                        Id str -> str `notElem` opsParts
+                                        _      -> True
+                                opsParts :: [String]
+                                opsParts = concatMap operatorParts lvls
 
                         closedParser :: P Expr
                         closedParser = choiceTry (map parseOp ops)
@@ -251,7 +251,7 @@ genn lvls = exprParser <* eof
                 cleanOp op = (if isNothing (head op) then tail else id) . (if isNothing (last op) then init else id) $ op
 
                 middleParser :: P Expr
-                middleParser = choiceTry $ flip map (nonops lvl) $ \op -> do
+                middleParser = choiceTry . flip map (nonops lvl) $ \op -> do
                         l    <- pParser'
                         clsd <- closedPartParser (cleanOp op)
                         r    <- pParser'
@@ -261,15 +261,15 @@ genn lvls = exprParser <* eof
                 rightParser = do
                         ps <- many1 (try prefixParser <|> try rightAssocParser)
                         p  <- pParser'
-                        return $ foldr (\xs x -> Apply (xs ++ [x]) ) p ps
+                        return (foldr (\xs x -> Apply (xs ++ [x]) ) p ps)
                     where
                         prefixParser :: P [Expr]
-                        prefixParser = choiceTry $ flip map (prefixops lvl) $ \op -> do
+                        prefixParser = choiceTry . flip map (prefixops lvl) $ \op -> do
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ clsd)
 
                         rightAssocParser :: P [Expr]
-                        rightAssocParser = choiceTry $ flip map (rightassocops lvl) $ \op -> do
+                        rightAssocParser = choiceTry . flip map (rightassocops lvl) $ \op -> do
                                 l    <- pParser'
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ [l] ++ clsd)
@@ -278,15 +278,15 @@ genn lvls = exprParser <* eof
                 leftParser = do
                         p  <- pParser'
                         ps <- many (try postfixParser <|> try leftAssocParser)
-                        return $ foldl' (\x (op:xs) -> Apply (op : x : xs) ) p ps
+                        return (foldl' (\x (op:xs) -> Apply (op : x : xs) ) p ps)
                     where
                         postfixParser :: P [Expr]
-                        postfixParser = choiceTry $ flip map (postfixops lvl) $ \op -> do
+                        postfixParser = choiceTry . flip map (postfixops lvl) $ \op -> do
                                 clsd <- closedPartParser (cleanOp op)
                                 return ([Id (opStr op)] ++ clsd)
 
                         leftAssocParser :: P [Expr]
-                        leftAssocParser = choiceTry $ flip map (leftassocops lvl) $ \op -> do
+                        leftAssocParser = choiceTry . flip map (leftassocops lvl) $ \op -> do
                                 clsd <- closedPartParser (cleanOp op)
                                 r    <- pParser'
                                 return ([Id (opStr op)] ++ clsd ++ [r])
@@ -300,5 +300,5 @@ genn lvls = exprParser <* eof
                     where
                         lst :: OpPart -> P [Expr]
                         lst mprt = case mprt of
-                                Just prt -> iden prt >> return []
-                                _        -> (\x -> cons x []) <$> exprParser
+                                Just prt -> iden prt *> return []
+                                _        -> liftA (flip cons []) exprParser
