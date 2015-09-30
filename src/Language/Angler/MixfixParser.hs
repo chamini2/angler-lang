@@ -7,7 +7,9 @@ import Data.Foldable
 import Data.Maybe
 import Data.Map.Strict (Map, fromList, empty, lookup, insertWith)
 
-import Text.Parsec hiding (satisfy)
+import Text.Megaparsec hiding (satisfy)
+import Text.Megaparsec.Pos (incSourceColumn)
+import Text.Megaparsec.ShowToken (ShowToken(..))
 
 import Control.Applicative ((<*>), (<*), liftA, liftA2)
 import Control.Lens hiding (op)
@@ -144,13 +146,23 @@ t6' = Right $ Apply
 
 --------------------------------------------------------------------------------
 
-type P a = Parsec [Expr] () a
+type P a = Parsec [Expr] a
+
+instance ShowToken Expr where
+        showToken = show
+
+instance ShowToken a => ShowToken [a] where
+        showToken = show
 
 satisfy :: (Expr -> Bool) -> P Expr
-satisfy g = tokenPrim show nextPos testTok
+satisfy g = token nextPos testTok
     where
-        testTok t = if g t then Just t else Nothing
-        nextPos p t _ts = setSourceColumn p (sourceColumn p + getLength t)
+        testTok :: Expr -> Either [Message] Expr
+        testTok t = if g t
+                then Right t
+                else Left . pure . Unexpected . showToken $ t
+        nextPos :: Int -> SourcePos -> Expr -> SourcePos
+        nextPos _tb p t = incSourceColumn p (getLength t)
             where
                 getLength :: Expr -> Int
                 getLength x = case x of
@@ -165,7 +177,7 @@ iden s = satisfy testTok
             Id i -> i == s
             _    -> False
 
-choiceTry :: Stream s m t => [ParsecT s u m a] -> ParsecT s u m a
+choiceTry :: Stream s t => [ParsecT s m a] -> ParsecT s m a
 choiceTry = choice . map try
 
 operatorParts :: PrecedenceLevel -> [String]
@@ -218,7 +230,7 @@ genn lvls = exprParser <* eof
                 go pp acts = pp acts : acts
 
         bottomParser :: P Expr
-        bottomParser = flattenExpr . Apply <$> many1 basicToken
+        bottomParser = flattenExpr . Apply <$> some basicToken
         -- bottomParser = flattenExpr . Apply <$> tokens
             where
                 -- This gets any token, and then continues with the basic tokens
@@ -274,7 +286,7 @@ genn lvls = exprParser <* eof
 
                 rightParser :: P Expr
                 rightParser = do
-                        ps <- many1 (try prefixParser <|> try rightAssocParser)
+                        ps <- some (try prefixParser <|> try rightAssocParser)
                         p  <- pParser'
                         return (foldr (\xs x -> Apply (xs ++ [x]) ) p ps)
                     where

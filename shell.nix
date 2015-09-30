@@ -5,7 +5,7 @@ let
   inherit (nixpkgs) pkgs;
 
   f = { mkDerivation, alex, array, base, containers, data-default
-      , directory, happy, lens, mtl, parsec, stdenv, utf8-string
+      , directory, happy, lens, megaparsec, mtl, stdenv, utf8-string
       }:
       mkDerivation {
         pname = "angler";
@@ -14,7 +14,7 @@ let
         isLibrary = false;
         isExecutable = true;
         executableHaskellDepends = [
-          array base containers data-default directory lens mtl parsec
+          array base containers data-default directory lens megaparsec mtl
           utf8-string
         ];
         executableToolDepends = [ alex happy ];

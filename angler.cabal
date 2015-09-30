@@ -46,10 +46,10 @@ executable angler
                                 -- System.Directory
                         , lens
                                 -- Control.Lens
+                        , megaparsec
+                                -- Text.Megaparsec
                         , mtl
                                 -- MonadTrans
-                        , parsec
-                                -- Text.Parsec
                         , utf8-string
                                 -- Codec.Binary.String.UTF8
   default-language:     Haskell2010
