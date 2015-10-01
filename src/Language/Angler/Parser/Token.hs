@@ -79,9 +79,9 @@ instance Show Token where
         TkChar    chr      -> show chr
         TkString  str      -> show str
 
-        TkVLCurly          -> "{^"
-        TkVRCurly          -> "^}"
-        TkVSemicolon       -> "^;"
+        TkVLCurly          -> "{^\n"
+        TkVRCurly          -> "\n^}"
+        TkVSemicolon       -> "^;\n"
 
         TkExport           -> "export"
         TkImport           -> "import"
