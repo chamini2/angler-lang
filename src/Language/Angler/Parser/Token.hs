@@ -39,6 +39,12 @@ data Token
   -- | TkBehaviour
   -- | TkOn
   -- | TkIs
+  | TkFixity
+  | TkPrefix
+  | TkPostfix
+  | TkInfixL
+  | TkInfixR
+  | TkInfixN
 
   -- reserved symbols
   | TkColon
@@ -90,8 +96,15 @@ instance Show Token where
         TkForall           -> "forall"
         TkExists           -> "exists"
         TkSelect           -> "select"
+        -- TkBehaviour        -> "behaviour"
         -- TkOn               -> "on"
         -- TkIs               -> "is"
+        TkFixity           -> "fixity"
+        TkPrefix           -> "prefix"
+        TkPostfix          -> "postfix"
+        TkInfixL           -> "infixL"
+        TkInfixR           -> "infixR"
+        TkInfixN           -> "infixN"
 
         TkColon            -> ":"
         TkSemicolon        -> ";"
@@ -110,4 +123,3 @@ instance Show Token where
         TkEOF                -> "<eof>"
     where
         showId str = "«" ++ str ++ "»"
-

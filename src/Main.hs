@@ -71,10 +71,6 @@ readModule options handle filepath = do
 
         -- symbols <- readModule options modrelpath
         return ()
-
     where
-        -- evalLP' :: String -> LP a -> a
-        evalLP' input = evalLP input (SrcLoc filepath 1 1)
-
         printFailure :: Show s => s -> Int -> IO a
         printFailure s code = print s >> exitWith (ExitFailure code)

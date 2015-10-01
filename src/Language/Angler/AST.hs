@@ -24,7 +24,7 @@ type IdentifierSpan = Identifier SrcSpan
 data Module a
   = Module
         { _mod_name     :: String
-        , _mod_exports  :: Maybe (Seq (Identifier a))   -- 'Nothing' means to export everything
+        , _mod_exports  :: Maybe (Seq (Identifier a))   -- Nothing means to export everything
         , _mod_imports  :: Seq (Import a)
         , _mod_body     :: Body a
         , _mod_annot    :: a
@@ -36,7 +36,7 @@ data Import a
   = Import
         { _impr_path    :: FilePath
         , _impr_as      :: Maybe (Identifier a)
-        , _impr_spcfc   :: Maybe (Seq (Identifier a))   -- 'Nothing' means to import everything
+        , _impr_spcfc   :: Maybe (Seq (Identifier a))   -- Nothing means to import everything
         , _impr_annot   :: a
         }
   deriving Show
@@ -66,13 +66,18 @@ data BodyStmt a
   | FunctionDecl
         { _fdec_id      :: Identifier a
         , _fdec_type    :: ExprWhere a
-        , _fdec_fix     :: Maybe (Fixity a)
         , _stm_annot    :: a
         }
   | FunctionDef
         { _fdef_args    :: Seq (Argument a)
         , _fdef_expr    :: ExprWhere a
         , _stm_annot    :: a
+        }
+  | FixityDef
+        { _fixd_id      :: Identifier a
+        , _fixd_fix     :: Fixity a
+        , _fixd_prec    :: Maybe Int
+        , _fixd_annot   :: a
         }
   deriving Show
 type BodyStmtSpan = BodyStmt SrcSpan
@@ -142,17 +147,24 @@ data TypeBind a
 type TypeBindSpan = TypeBind SrcSpan
 
 data Associativity
-  = AssLeft
-  | AssRight
-  | AssNon
+  = LeftAssoc
+  | RightAssoc
+  | NonAssoc
   deriving Show
 
 data Fixity a
-  = Prefix a
-  | Infix Associativity a
-  | Postfix a
-  | Closed a
+  = Prefix
+        { _fix_annot    :: a }
+  | Infix
+        { _fix_assoc    :: Associativity
+        , _fix_annot    :: a
+        }
+  | Postfix
+        { _fix_annot    :: a }
+  | Closedfix
+        { _fix_annot    :: a }
   deriving Show
+type FixitySpan = Fixity SrcSpan
 
 data Argument a
   = Binding
@@ -203,6 +215,7 @@ makeLenses ''BodyStmt
 makeLenses ''Where
 makeLenses ''Expression
 makeLenses ''TypeBind
+makeLenses ''Fixity
 makeLenses ''Argument
 makeLenses ''ImplicitBinding
 makeLenses ''Literal
@@ -267,7 +280,8 @@ instance PrettyShow (Module a) where
                         string "export (" >> string (showExports exprts) >> string ")"
                         line >> line
 
-                pshows line imprts >> line >> line
+                pshows line imprts
+                line >> line
                 pshows (line >> line) bdy
             where
                 showExports :: Traversable f => f (Identifier a) -> String
@@ -302,20 +316,23 @@ instance PrettyShow (BodyStmt a) where
                         string "closed " >> lstring idn_str idn
                         string " : " >> pshow typ >> string " with"
                         raise >> line >> pshows line cns >> lower
-                FunctionDecl idn typ mfx _ -> do
+                FunctionDecl idn typ _ -> do
                         lstring idn_str idn
-                        when (isJust mfx) $ do
-                                let Just fx = mfx
-                                string "FIXITY"
                         string " : " >> pshow typ
                 FunctionDef args expr _ -> do
                         pshows (string " ") args
                         string " = " >> pshow expr
+                FixityDef idn fx mint _ -> do
+                        string "fixity " >> lstring idn_str idn >> string " "
+                        pshow fx
+                        when (isJust mint) $ do
+                                let Just int = mint
+                                string " " >> string (show int)
 
 instance PrettyShow (f a) => PrettyShow (Where f a) where
         pshow whre = case whre of
-                Where a mbdy _ -> do
-                        pshow a
+                Where insd mbdy _ -> do
+                        pshow insd
                         when (isJust mbdy) $ do
                                 let Just bdy = mbdy
                                 raise >> line
@@ -330,17 +347,8 @@ instance PrettyShow (Expression a) where
                 Var str _           -> string "«" >> string str >> string "»"
                 Lit lit _           -> pshow lit
                 Apply exprs   _     -> pshows (string " ") exprs
-                -- Apply fun ovr _     -> caseShow fun >> string " " >> caseShow ovr
-                --     where
-                --         caseShow :: Expression a -> PrettyShowMonad
-                --         caseShow expr = case expr of
-                --                 Var {}          -> pshow expr
-                --                 Lit {}          -> pshow expr
-                --                 Exists {}       -> pshow expr
-                --                 ImplicitExpr {} -> pshow expr
-                --                 _               -> string "(" >> pshow expr >> string ")"
                 Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
-                Let bdy expr _      -> do
+                Let bdy expr' _     -> do
                         raise >> line
                         string "let"
 
@@ -349,7 +357,7 @@ instance PrettyShow (Expression a) where
                         lower >> line
 
                         string "in "
-                        pshow expr
+                        pshow expr'
                         lower
                 Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
                                                         >> pshow expr'
@@ -361,6 +369,18 @@ instance PrettyShow (Expression a) where
                 pshows' :: (PrettyShow a, Foldable f) => String -> f a -> PrettyShowMonad
                 pshows' = pshows . string
 
+instance PrettyShow Associativity where
+        pshow assoc = case assoc of
+                LeftAssoc  -> string "L"
+                RightAssoc -> string "R"
+                NonAssoc   -> string "N"
+
+instance PrettyShow (Fixity a) where
+        pshow fix = case fix of
+                Prefix _      -> string "prefix"
+                Infix assoc _ -> string "infix" >> pshow assoc
+                Postfix _     -> string "postfix"
+                Closedfix _   -> string "closed"
 
 instance PrettyShow (TypeBind a) where
         pshow (TypeBind idn typ _) = lstring idn_str idn >> string " : " >> pshow typ

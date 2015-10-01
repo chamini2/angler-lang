@@ -75,6 +75,7 @@ $escape_chars = [ a b f n r t v \\ \' \" ]                              -- "
 @idsymbol     = ((\_)? @opsymbol)+ (\_)?
 
 @op           = @opalpha | @opsymbol
+
                 -- with '_'            | without '_'
 @ident        = (\_)? (@op \_)+ (@op)? | @op
 -- @ident        = @idalpha | @idsymbol
@@ -167,8 +168,14 @@ reserved = Map.fromList
         , ("exists"   , TkExists    )
         , ("select"   , TkSelect    )
         -- , ("behaviour", TkBehaviour )
-        -- , ("on"    , TkOn        )
-        -- , ("is"    , TkIs        )
+        -- , ("on"       , TkOn        )
+        -- , ("is"       , TkIs        )
+        , ("fixity"   , TkFixity    )
+        , ("prefix"   , TkPrefix    )
+        , ("postfix"  , TkPostfix   )
+        , ("infixL"   , TkInfixL    )
+        , ("infixR"   , TkInfixR    )
+        , ("infixN"   , TkInfixN    )
 
         -- symbols
         , (":"        , TkColon     )

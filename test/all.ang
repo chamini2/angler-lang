@@ -3,6 +3,9 @@ export (Nat, filter)
 import Data.List (List)
 import Data.List as L (_::_, Nil)
 
+fixity _._ infixL 10
+fixity _$_ infixL 0
+
 id : forall t:Type . t -> t
 the : (select t:Type) -> t -> t
 
@@ -103,7 +106,7 @@ filter g (x L.:: xs) =
                 else id) filter g xs
 filter _ (L.Nil) = L.Nil
 
-filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists (m:Nat ; Vect m t)
+filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists m:Nat ; Vect m t
 filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
 filterVect _ (Nil    ) = Nil
 -- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
