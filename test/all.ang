@@ -12,6 +12,10 @@ the : (select t:Type) -> t -> t
 id x = x
 the t x = id { t = t } x
 
+-- probably impossible
+typeOf : exists t:Type ; t -> t
+typeOf x = x
+
 _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
 (f . g) x = f (g x)
 
@@ -73,8 +77,7 @@ foldr _ Nil       y = y
                 Yeap : True
         closed False : Bool with
                 No : False
-                Nope : False
-        Bool = Char -}
+                Nope : False -}
 
 -- macros higienicos
 -- if True then if False then 1 else 2 else 3

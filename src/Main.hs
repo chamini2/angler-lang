@@ -14,10 +14,8 @@ import           System.Environment            (getArgs)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
                                                 openFile, stdin)
 
--- import           Language.Angler.Error
 import           Language.Angler.SrcLoc
 import           Language.Angler.Options
-import           Language.Angler.Parser.Lexer  (lexTokens)
 import           Language.Angler.Parser.Token
 
 import           Data.List                     (intercalate)
@@ -53,13 +51,12 @@ readModule options handle filepath = do
                 case evalLP' lexTokens of
                         Right ltks -> putStrLn (intercalate " " (map (showNL . view loc_insd) ltks))
                             where
-                                showNL tk = (case tk of
-                                       TkVSemicolon -> (++ "\n") . show
-                                       TkVLCurly    -> (++ "\n") . show
-                                       TkVRCurly    -> ("\n" ++) . show
-                                       _            -> show) tk
-
-                        _ -> return ()
+                                showNL tk = case tk of
+                                       TkVSemicolon -> show tk ++ "\n"
+                                       TkVLCurly    -> show tk ++ "\n"
+                                       TkVRCurly    -> "\n" ++ show tk
+                                       _            -> show tk
+                        Left  _err -> return ()
 
         ast <- case evalLP' parseModule of
                 Right ast -> return ast

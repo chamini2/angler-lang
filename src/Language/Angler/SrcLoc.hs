@@ -9,6 +9,7 @@ module Language.Angler.SrcLoc
         , srcSpanSLoc
         , srcSpanELoc
 
+        , srcSpanFile
         , srcSpanSLine
         , srcSpanSCol
         , srcSpanELine
@@ -86,6 +87,13 @@ srcLocSpan (SrcLoc f l1 c1) (SrcLoc f' l2 c2) = case (compare f f', compare l1 l
         (_ , _ , _ ) -> error "SrcLoc.srcLocSpan: different files for SrcSpan"
 
 
+srcSpanFile :: SrcSpan -> FilePath
+srcSpanFile span = case span of
+        SrcSpanNoInfo                      -> error "SrcLoc.srcSpanFile: SrcSpanNoInfo"
+        SrcSpanPoint     f _l  _c          -> f
+        SrcSpanOneLine   f _l  _sc _ec     -> f
+        SrcSpanMultiline f _sl _sc _el _ec -> f
+
 srcSpanSLine :: SrcSpan -> Int
 srcSpanSLine span = case span of
         SrcSpanNoInfo                      -> error "SrcLoc.srcSpanSLine: SrcSpanNoInfo"
@@ -124,7 +132,11 @@ data Located e
 makeLenses ''Located
 
 srcSpanSpan :: SrcSpan -> SrcSpan -> SrcSpan
-srcSpanSpan s e = srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
+srcSpanSpan s e = case (s,e) of
+        (SrcSpanNoInfo, _            ) -> e
+        (_            , SrcSpanNoInfo) -> s
+        _                              -> srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
+
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan
 srcLocatedSpan (Loc s _) (Loc e _) = srcSpanSpan s e
