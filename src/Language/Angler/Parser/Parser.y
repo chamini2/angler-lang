@@ -54,7 +54,7 @@ import           Data.Maybe                   (isJust, fromJust)
         -- 'on'                    { Loc $$ TkOn            }
         -- 'behaviour'             { Loc $$ TkBehaviour     }
         -- 'is'                    { Loc $$ TkIs            }
-        'fixity'                { Loc $$ TkFixity       }
+        'operator'              { Loc $$ TkOperator     }
         'prefix'                { Loc $$ TkPrefix       }
         'postfix'               { Loc $$ TkPostfix      }
         'infixL'                { Loc $$ TkInfixL       }
@@ -211,8 +211,8 @@ Body :: { BodySpan }
         | List1(Argument(FunId)) '=' ExpressionWhere
                         { FunctionDef $1 $3
                             (srcSpanSpan ($1^?!_head.arg_annot) ($3^.whre_annot)) }
-        | 'fixity' Id Fixity Maybe(LitInt)
-                        { FixityDef $2 $3 ($4^?_Just.lit_int)
+        | 'operator' Id Fixity Maybe(LitInt)
+                        { OperatorDef $2 $3 ($4^?_Just.lit_int)
                             (srcSpanSpan $1 (maybe ($3^.fix_annot) (^.lit_annot) $4)) }
 
         -- behaviour namespace

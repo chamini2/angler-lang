@@ -7,11 +7,11 @@ import           Language.Angler.SrcLoc
 import           Control.Lens
 import           Control.Monad           (when)
 import           Control.Monad.State     (State, execState)
-import           Data.Sequence           (Seq)
-import           Data.Maybe              (isJust)
 
-import           Data.List               (intercalate)
 import           Data.Foldable           (toList)
+import           Data.List               (intercalate)
+import           Data.Maybe              (isJust)
+import           Data.Sequence           (Seq)
 
 data Identifier a
   = Identifier
@@ -73,7 +73,7 @@ data BodyStmt a
         , _fdef_expr    :: ExprWhere a
         , _stm_annot    :: a
         }
-  | FixityDef
+  | OperatorDef
         { _fixd_id      :: Identifier a
         , _fixd_fix     :: Fixity a
         , _fixd_prec    :: Maybe Int
@@ -150,7 +150,7 @@ data Associativity
   = LeftAssoc
   | RightAssoc
   | NonAssoc
-  deriving Show
+  deriving (Show, Eq, Ord)
 
 data Fixity a
   = Prefix
@@ -165,6 +165,19 @@ data Fixity a
         { _fix_annot    :: a }
   deriving Show
 type FixitySpan = Fixity SrcSpan
+
+instance Eq (Fixity a) where
+        (==) a b = a <= b && b <= a
+
+instance Ord (Fixity a) where
+        (<=) a b = constr a <= constr b
+            where
+                constr :: Fixity a -> String
+                constr fix = case fix of
+                        Prefix    _ -> "Prefix"
+                        Postfix   _ -> "Postfix"
+                        Closedfix _ -> "Closedfix"
+                        Infix ass _ -> "Infix" ++ show ass
 
 data Argument a
   = Binding
@@ -322,7 +335,7 @@ instance PrettyShow (BodyStmt a) where
                 FunctionDef args expr _ -> do
                         pshows (string " ") args
                         string " = " >> pshow expr
-                FixityDef idn fx mint _ -> do
+                OperatorDef idn fx mint _ -> do
                         string "fixity " >> lstring idn_str idn >> string " "
                         pshow fx
                         when (isJust mint) $ do

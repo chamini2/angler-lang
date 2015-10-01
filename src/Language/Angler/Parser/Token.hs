@@ -39,7 +39,7 @@ data Token
   -- | TkBehaviour
   -- | TkOn
   -- | TkIs
-  | TkFixity
+  | TkOperator
   | TkPrefix
   | TkPostfix
   | TkInfixL
@@ -99,7 +99,7 @@ instance Show Token where
         -- TkBehaviour        -> "behaviour"
         -- TkOn               -> "on"
         -- TkIs               -> "is"
-        TkFixity           -> "fixity"
+        TkOperator         -> "operator"
         TkPrefix           -> "prefix"
         TkPostfix          -> "postfix"
         TkInfixL           -> "infixL"

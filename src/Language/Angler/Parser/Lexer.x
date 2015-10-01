@@ -170,7 +170,7 @@ reserved = Map.fromList
         -- , ("behaviour", TkBehaviour )
         -- , ("on"       , TkOn        )
         -- , ("is"       , TkIs        )
-        , ("fixity"   , TkFixity    )
+        , ("operator" , TkOperator  )
         , ("prefix"   , TkPrefix    )
         , ("postfix"  , TkPostfix   )
         , ("infixL"   , TkInfixL    )
