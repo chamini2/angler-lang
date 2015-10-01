@@ -235,6 +235,7 @@ makeLenses ''ImplicitBinding
 makeLenses ''Literal
 
 --------------------------------------------------------------------------------
+-- PrettyShow
 
 type Indentation = Int
 type PrettyShowMonad = State PrettyShowState ()

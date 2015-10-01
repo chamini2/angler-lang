@@ -29,7 +29,7 @@ import           Data.Word              (Word8)
 import           Prelude                hiding (span)
 
 -- LexerParser Monad
-type LP a = StateT LPState (ExceptT (Located Error) Identity) a
+type LP = StateT LPState (ExceptT (Located Error) Identity)
 
 type Byte = Word8
 

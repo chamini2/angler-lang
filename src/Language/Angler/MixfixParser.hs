@@ -1,23 +1,24 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Language.Angler.MixfixParser
-    (
-    ) where
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Language.Angler.MixfixParser where
+
+import           Language.Angler.AST
+import           Language.Angler.SymbolTable (SymbolTable)
+import           Language.Angler.SrcLoc
 
 import           Control.Applicative         (Alternative(..), (<|>), (<*>),
                                               (<*), (*>), liftA, many, some)
-import           Control.Lens
-import           Control.Monad.State         (State, StateT(..))
+import           Control.Lens                hiding (op, below, parts)
+import           Control.Monad.State         (State, runState)
+
 import           Data.Map.Strict             (Map, lookup)
-import           Data.Sequence               (Seq(..), fromList)
-import           Text.Megaparsec             (Parsec, choice, eof, token, try)
+import           Data.Sequence               (Seq, fromList)
+
+import           Text.Megaparsec             (ParsecT(..), choice, eof, runParserT, token, try)
 import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
                                               setSourceLine, setSourceColumn)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
-import           Text.Megaparsec.Error       (Message(..))
-
-import           Language.Angler.AST
-import           Language.Angler.SymbolTable (SymbolTable(..))
-import           Language.Angler.SrcLoc
+import           Text.Megaparsec.Error       (ParseError, Message(..))
 
 import           Prelude                     hiding (lookup)
 
@@ -46,17 +47,28 @@ strOp = foldr go []
 
 data OpPState
   = OpPState
-        { _rw_prec      :: Precedences
-        , _rw_table     :: SymbolTable ()
+        { _op_prec      :: Precedences
+        , _op_table     :: SymbolTable ()
         }
 
 makeLenses ''OpPState
 
 --------------------------------------------------------------------------------
--- Monad Parser
+-- Monad
 
-type OpP a = StateT OpPState (Parsec [ExprSpan]) a
+type Mixfix = State OpPState
+
+runMixfix :: Mixfix a -> OpPState -> (a, OpPState)
+runMixfix = runState
+
+--------------------------------------------------------------------------------
+-- Parser
+
 type ExprSpan = ExpressionSpan
+type OpP = ParsecT [ExprSpan] Mixfix
+
+runOpP :: OpP a -> FilePath -> [ExprSpan] -> Mixfix (Either ParseError a)
+runOpP = runParserT
 
 instance Show a => ShowToken (Expression a) where
         showToken = prettyShow
@@ -95,7 +107,7 @@ generateOpP :: OpP ExprSpan
 generateOpP = topOpP <* eof
     where
         topOpP :: OpP ExprSpan
-        topOpP = use rw_prec >>= choice . foldr go [bottomOpP] . fmap pOpP
+        topOpP = use op_prec >>= choice . foldr go [bottomOpP] . fmap pOpP
             where
                 -- We pass all the parsers below as *fallback*
                 -- if we couldn't get a match on this level
@@ -123,7 +135,7 @@ generateOpP = topOpP <* eof
                 basicToken = try obviousToken <|> closedOpOpP
                     where
                         obviousToken :: OpP ExprSpan
-                        obviousToken = use rw_prec >>= satisfy . testExpr
+                        obviousToken = use op_prec >>= satisfy . testExpr
                             where
                                 testExpr :: Precedences -> ExprSpan -> Bool
                                 testExpr prec x = case x of
@@ -133,7 +145,7 @@ generateOpP = topOpP <* eof
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)
 
                 closedOpOpP :: OpP ExprSpan
-                closedOpOpP = use rw_prec >>= choice . fmap (try . opOpP) . closedOps
+                closedOpOpP = use op_prec >>= choice . fmap (try . opOpP) . closedOps
                     where
                         opOpP :: Operator -> OpP ExprSpan
                         opOpP op = do
@@ -144,7 +156,7 @@ generateOpP = topOpP <* eof
                         closedOps = concatMap (maybe [] id . lookup (Closedfix ()))
 
         pOpP :: PrecedenceLevel -> [OpP ExprSpan] -> OpP ExprSpan
-        pOpP lvl below = choice below
+        pOpP _lvl below = choice below
 
         closedPartOpP :: Alternative f => Operator -> OpP (f ExprSpan)
         closedPartOpP = foldr go (pure empty)

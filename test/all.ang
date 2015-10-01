@@ -13,7 +13,9 @@ id x = x
 the t x = id { t = t } x
 
 -- probably impossible
-typeOf : exists t:Type ; t -> t
+-- typeOf : exists t:Type ; t -> t
+-- typeOf x = x
+typeOf : forall x:Type . x -> (exists t:Type1 ; (select x : t))
 typeOf x = x
 
 _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c

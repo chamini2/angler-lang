@@ -147,7 +147,7 @@ t6' = Right $ Apply
 
 --------------------------------------------------------------------------------
 
-type P a = Parsec [Expr] a
+type P = Parsec [Expr]
 
 instance ShowToken Expr where
         showToken = show
