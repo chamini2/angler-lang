@@ -1,46 +1,33 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -w #-}
-module Rewrite where
+module Language.Angler.MixfixParser
+    (
+    ) where
 
-import Data.Either
-import Data.Foldable
-import Data.Maybe
-import Data.Map.Strict (Map, fromList, empty, lookup, insertWith)
+import           Control.Applicative         (Alternative(..), (<|>), (<*>),
+                                              (<*), (*>), liftA, many, some)
+import           Control.Lens
+import           Control.Monad.State         (State, StateT(..))
+import           Data.Map.Strict             (Map, lookup)
+import           Data.Sequence               (Seq(..), fromList)
+import           Text.Megaparsec             (Parsec, choice, eof, token, try)
+import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
+                                              setSourceLine, setSourceColumn)
+import           Text.Megaparsec.ShowToken   (ShowToken(..))
+import           Text.Megaparsec.Error       (Message(..))
 
-import Text.Megaparsec hiding (satisfy)
-import Text.Megaparsec.Pos (incSourceColumn)
-import Text.Megaparsec.ShowToken (ShowToken(..))
+import           Language.Angler.AST
+import           Language.Angler.SymbolTable (SymbolTable(..))
+import           Language.Angler.SrcLoc
 
-import Control.Applicative ((<*>), (<*), liftA, liftA2)
-import Control.Lens hiding (op)
+import           Prelude                     hiding (lookup)
 
-import Prelude hiding (lookup)
+--------------------------------------------------------------------------------
+-- Operator handling
 
-import Debug.Trace
-
-data Expr
-  = Apply [Expr]
-  | Id String
-  | Forall String Expr Expr
-  deriving (Eq, Show)
-
-type OpPart = Maybe String
-type Operator = [OpPart]
-
-data Assoc
-  = ANon
-  | ALeft
-  | ARight
-  deriving (Eq, Show, Ord)
-makePrisms ''Assoc
-
-data Fixity
-  = Pre
-  | Post
-  | Infix Assoc
-  | Closed
-  deriving (Eq, Show, Ord)
-makePrisms ''Fixity
+type OperatorPart    = Maybe String                     -- Nothing represents hole
+type Operator        = [ OperatorPart ]
+type PrecedenceLevel = Map (Fixity ()) [ Operator ]
+type Precedences     = [ PrecedenceLevel ]
 
 opStr :: Operator -> String
 opStr = concatMap (maybe "_" id)
@@ -48,284 +35,123 @@ opStr = concatMap (maybe "_" id)
 strOp :: String -> Operator
 strOp = foldr go []
     where
-        go c prts = case (c, prts) of
-                ('_', Nothing : ps) -> error "two holes in a row in an identifier"
-                ('_', _           ) -> Nothing    : prts
-                ( _ , Just p  : ps) -> Just (c:p) : ps
-                ( _ , _           ) -> Just [c]   : prts
-
-type PrecedenceLevel = Map Fixity [ Operator ]
-type OperatorsPrecedence = [ PrecedenceLevel ]
-
-ops' :: OperatorsPrecedence
-ops' = map ($ empty)
-        [ add (Infix ANon) [strOp "_<_>_"]
-        , add (Infix ANon) [strOp "_==_"]
-        , add  Closed      [strOp "<<_>>"]
-        , add  Closed      [strOp "(^_^)"]
-        , add (Infix ALeft) [strOp "_<>_"] . add (Infix ARight) [strOp "_|_"]
-        ]
-    where
-        add = insertWith (++)
-
--- from weak to strong
-ops :: OperatorsPrecedence
-ops = map ($ empty)
-        [ add  Pre            [strOp "if_then_else_"]
-        , add (Infix ARight)  [strOp "_/\\_"]
-        , add (Infix ANon)    [strOp "_==_"]
-        , add (Infix ALeft)   [strOp "_+_", strOp "_-_"]
-        , add  Post           [strOp "_!"]
-        ]
-    where
-        add = insertWith (++)
-
-toExpr :: String -> Expr
-toExpr = flattenExpr . Apply . fst . func . words
-    where
-        func wrds = case wrds of
-            w : ws -> case w of
-                    "(" -> let (xs', left') = func left in (Apply xs : xs', left')
-                    ")" -> ([], ws)
-                    _   -> (Id w : xs, left)
-                where
-                    (xs, left) = func ws
-            _      -> ([], [])
-
-flattenExpr :: Expr -> Expr
-flattenExpr ex = case ex of
-    Apply [x]    -> flattenExpr x
-    Apply xs     -> Apply (map flattenExpr xs)
-    Forall s t x -> Forall s (flattenExpr t) (flattenExpr x)
-    Id x         -> Id x
-
-t0 = toExpr "if f a then 2 else if b then 3 else 4"
-t1 = toExpr "a /\\ b c /\\ d e f /\\ g"
-t2 = toExpr "if a /\\ b then c else d /\\ e f"
-t3 = toExpr "a == b /\\ c d == e f"
-t4 = toExpr "a == ( if b c then d /\\ if e then f else g else h == i )"
-t5 = toExpr "a + b - c + d"
-t7 = toExpr "a == b + c /\\ d == e"
-
-ops8 = [ insertWith (++) (Infix ARight) [strOp "_->_"] empty ]
-t8 = Apply [Forall "t" (Id "Type") (Forall "n" (Id "Nat")
-        (Apply [ Apply [Id "t", Id "->", Id "Bool"] , Id "->", Id "Vect"
-               , Id "n", Id "t" , Id "->", Forall "m" (Id "Nat")
-                        (Apply [Id "m", Id "->", Id "t"]) ] ) )]
-
-t6 = toExpr "if a + b == c - d + e - f g /\\ h == i then j else k"
-t6' = Right $ Apply
-        [Id "if_then_else_",Apply
-                [Id "_/\\_",Apply
-                        [Id "_==_",Apply
-                                [Id "_+_",
-                                        Id "a",
-                                        Id "b"
-                                ],Apply
-                                [Id "_-_",Apply
-                                        [Id "_+_",Apply
-                                                [Id "_-_",
-                                                        Id "c",
-                                                        Id "d"
-                                                ],
-                                                Id "e"
-                                        ],Apply
-                                        [Id "f",
-                                                Id "g"
-                                        ]
-                                ]
-                        ],Apply
-                        [Id "_==_",
-                                Id "h",
-                                Id "i"
-                        ]
-                ],
-                Id "j",
-                Id "k"
-        ]
+        go :: Char -> Operator -> Operator
+        go c ps = case (c,ps) of
+                ('_', _           ) -> Nothing    : ps
+                ( _ , Just p : ps') -> Just (c:p) : ps'
+                ( _ , _           ) -> Just [c]   : ps
 
 --------------------------------------------------------------------------------
+-- State
 
-type P a = Parsec [Expr] a
+data OpPState
+  = OpPState
+        { _rw_prec      :: Precedences
+        , _rw_table     :: SymbolTable ()
+        }
 
-instance ShowToken Expr where
-        showToken = show
+makeLenses ''OpPState
+
+--------------------------------------------------------------------------------
+-- Monad Parser
+
+type OpP a = StateT OpPState (Parsec [ExprSpan]) a
+type ExprSpan = ExpressionSpan
+
+instance Show a => ShowToken (Expression a) where
+        showToken = prettyShow
 
 instance ShowToken a => ShowToken [a] where
         showToken = show
 
-satisfy :: (Expr -> Bool) -> P Expr
-satisfy g = token nextPos testTok
+satisfy :: (ExprSpan -> Bool) -> OpP ExprSpan
+satisfy g = token nextPos testExpr
     where
-        testTok :: Expr -> Either [Message] Expr
-        testTok t = if g t
-                then Right t
-                else Left . pure . Unexpected . showToken $ t
-        nextPos :: Int -> SourcePos -> Expr -> SourcePos
-        nextPos _tb p t = incSourceColumn p (getLength t)
+        testExpr :: ExprSpan -> Either [Message] ExprSpan
+        testExpr x = if g x
+                then Right x
+                else (Left . return . Unexpected . showToken) x
+        nextPos :: Int -> SourcePos -> ExprSpan -> SourcePos
+        nextPos _tab p x = (setName . setLine . setColumn) p
             where
-                getLength :: Expr -> Int
-                getLength x = case x of
-                    Id str -> length str
-                    Apply xs -> sum . map getLength $ xs
-                    Forall str t x -> length str + getLength t + getLength x
+                xSpan :: SrcSpan
+                xSpan = view exp_annot x
+                setName :: SourcePos -> SourcePos
+                setName = flip setSourceName (srcSpanFile xSpan)
+                setLine :: SourcePos -> SourcePos
+                setLine = flip setSourceLine (srcSpanSLine xSpan)
+                setColumn :: SourcePos -> SourcePos
+                setColumn = flip setSourceColumn (srcSpanSCol xSpan)
 
-iden :: String -> P Expr
-iden s = satisfy testTok
+var :: String -> OpP ExprSpan
+var str = satisfy testExpr
     where
-        testTok t = case t of
-            Id i -> i == s
-            _    -> False
+        testExpr :: ExprSpan -> Bool
+        testExpr x = case x of
+                Var name _ -> name == str
+                _          -> False
 
-choiceTry :: Stream s t => [ParsecT s m a] -> ParsecT s m a
-choiceTry = choice . map try
-
-operatorParts :: PrecedenceLevel -> [String]
-operatorParts = toListOf (traverse.traverse.traverse._Just)
-
-infops :: Assoc -> PrecedenceLevel -> [Operator]
-infops ass = maybe [] id . lookup (Infix ass)
-
-rightassocops :: PrecedenceLevel -> [Operator]
-rightassocops = infops ARight
-
-prefixops :: PrecedenceLevel -> [Operator]
-prefixops = maybe [] id . lookup Pre
-
-leftassocops :: PrecedenceLevel -> [Operator]
-leftassocops = infops ALeft
-
-postfixops :: PrecedenceLevel -> [Operator]
-postfixops = maybe [] id . lookup Post
-
-nonops :: PrecedenceLevel -> [Operator]
-nonops = infops ANon
-
-closedops :: PrecedenceLevel -> [Operator]
-closedops = maybe [] id . lookup Closed
-
-parseMixfix :: OperatorsPrecedence -> Expr -> Either ParseError Expr
-parseMixfix prc ex = case ex of
-        Id str   -> return (Id str)
-        Apply xs -> let xsEits = fmap (parseMixfix prc) xs
-                    in case find isLeft xsEits of
-                        Just lf -> lf
-                        Nothing -> precParser (toListOf (traverse._Right) xsEits)
-        Forall str typ x -> case (parseMixfix prc typ, parseMixfix prc x) of
-                (Right t', Right x') -> Right (Forall str t' x')
-                (Left err, _       ) -> Left err
-                (_       , Left err) -> Left err
+generateOpP :: OpP ExprSpan
+generateOpP = topOpP <* eof
     where
-        precParser :: [Expr] -> Either ParseError Expr
-        precParser = parse (genn prc) ""
-
-genn :: OperatorsPrecedence -> P Expr
-genn lvls = exprParser <* eof
-    where
-
-        exprParser :: P Expr
-        exprParser = choiceTry (foldr go [bottomParser] (map pParser lvls))
+        topOpP :: OpP ExprSpan
+        topOpP = use rw_prec >>= choice . foldr go [bottomOpP] . fmap pOpP
             where
-                go :: ([P Expr] -> P Expr) -> [P Expr] -> [P Expr]
-                go pp acts = pp acts : acts
+                -- We pass all the parsers below as *fallback*
+                -- if we couldn't get a match on this level
+                go :: ([OpP ExprSpan] -> OpP ExprSpan) -> [OpP ExprSpan] -> [OpP ExprSpan]
+                go pp acts = try (pp acts) : acts
 
-        bottomParser :: P Expr
-        bottomParser = flattenExpr . Apply <$> some basicToken
-        -- bottomParser = flattenExpr . Apply <$> tokens
+        bottomOpP :: OpP ExprSpan
+        bottomOpP = do
+                xs <- liftA fromList cleverTokens
+                let xsSpan = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
+                return (Apply xs xsSpan)
             where
-                -- This gets any token, and then continues with the basic tokens
-                -- in 'if if a then b else c' it parses 'if_then_else_ (if a) b c'
-                -- instead of giving a parse error.This behaviour may or
-                -- may not be recommended.
-                tokens :: P [Expr]
-                tokens = cons <$> (try basicToken <|> try anyToken) <*> many basicToken
+                -- This tries to get a basic token, if we couldn't get even one,
+                -- it gets any token, and then continues with the basic tokens,
+                -- with 'if if a then b else c' it parses 'if_then_else_ (if a) b c'
+                -- instead of giving a parse error
+                -- This behaviour may or may not be recommended
+                cleverTokens :: OpP [ExprSpan]
+                cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
 
-                anyToken :: P Expr
+                anyToken :: OpP ExprSpan
                 anyToken = satisfy (const True)
 
-                basicToken :: P Expr
-                basicToken = try nonPartParser <|> try closedParser
+                basicToken :: OpP ExprSpan
+                basicToken = try obviousToken <|> closedOpOpP
                     where
-                        nonPartParser :: P Expr
-                        nonPartParser = satisfy testTk
+                        obviousToken :: OpP ExprSpan
+                        obviousToken = use rw_prec >>= satisfy . testExpr
                             where
-                                testTk :: Expr -> Bool
-                                testTk tk = case tk of
-                                        Id str -> str `notElem` opsParts
-                                        _      -> True
-                                opsParts :: [String]
-                                opsParts = concatMap operatorParts lvls
+                                testExpr :: Precedences -> ExprSpan -> Bool
+                                testExpr prec x = case x of
+                                        Var name _ -> name `notElem` (parts prec)
+                                        _          -> True
+                                parts :: Precedences -> [String]
+                                parts = toListOf (traverse.traverse.traverse.traverse._Just)
 
-                        closedParser :: P Expr
-                        closedParser = choiceTry (map parseOp ops)
-                            where
-                                parseOp :: Operator -> P Expr
-                                parseOp op = do
-                                        clsd <- closedPartParser op
-                                        return (Apply $ [Id (opStr op)] ++ clsd)
-                                ops :: [Operator]
-                                ops = concatMap closedops lvls
+                closedOpOpP :: OpP ExprSpan
+                closedOpOpP = use rw_prec >>= choice . fmap (try . opOpP) . closedOps
+                    where
+                        opOpP :: Operator -> OpP ExprSpan
+                        opOpP op = do
+                                clxs <- closedPartOpP op
+                                let clsp = srcSpanSpan (clxs^?!_head.exp_annot) (clxs^?!_last.exp_annot)
+                                return (Apply (Var (opStr op) clsp <| clxs) clsp)
+                        closedOps :: Precedences -> [Operator]
+                        closedOps = concatMap (maybe [] id . lookup (Closedfix ()))
 
-        pParser :: PrecedenceLevel -> [P Expr] -> P Expr
-        pParser lvl below = try middleParser
-                        <|> try rightParser
-                        <|> try leftParser
+        pOpP :: PrecedenceLevel -> [OpP ExprSpan] -> OpP ExprSpan
+        pOpP lvl below = choice below
+
+        closedPartOpP :: Alternative f => Operator -> OpP (f ExprSpan)
+        closedPartOpP = foldr go (pure empty)
             where
-                pParser' :: P Expr
-                pParser' = choiceTry below
-
-                cleanOp :: Operator -> Operator
-                cleanOp op = (if isNothing (head op) then tail else id) . (if isNothing (last op) then init else id) $ op
-
-                middleParser :: P Expr
-                middleParser = choiceTry . flip map (nonops lvl) $ \op -> do
-                        l    <- pParser'
-                        clsd <- closedPartParser (cleanOp op)
-                        r    <- pParser'
-                        return (Apply $ [Id (opStr op)] ++ [l] ++ clsd ++ [r])
-
-                rightParser :: P Expr
-                rightParser = do
-                        ps <- some (try prefixParser <|> try rightAssocParser)
-                        p  <- pParser'
-                        return (foldr (\xs x -> Apply (xs ++ [x]) ) p ps)
-                    where
-                        prefixParser :: P [Expr]
-                        prefixParser = choiceTry . flip map (prefixops lvl) $ \op -> do
-                                clsd <- closedPartParser (cleanOp op)
-                                return ([Id (opStr op)] ++ clsd)
-
-                        rightAssocParser :: P [Expr]
-                        rightAssocParser = choiceTry . flip map (rightassocops lvl) $ \op -> do
-                                l    <- pParser'
-                                clsd <- closedPartParser (cleanOp op)
-                                return ([Id (opStr op)] ++ [l] ++ clsd)
-
-                leftParser :: P Expr
-                leftParser = do
-                        p  <- pParser'
-                        ps <- many (try postfixParser <|> try leftAssocParser)
-                        return (foldl' (\x (op:xs) -> Apply (op : x : xs) ) p ps)
-                    where
-                        postfixParser :: P [Expr]
-                        postfixParser = choiceTry . flip map (postfixops lvl) $ \op -> do
-                                clsd <- closedPartParser (cleanOp op)
-                                return ([Id (opStr op)] ++ clsd)
-
-                        leftAssocParser :: P [Expr]
-                        leftAssocParser = choiceTry . flip map (leftassocops lvl) $ \op -> do
-                                clsd <- closedPartParser (cleanOp op)
-                                r    <- pParser'
-                                return ([Id (opStr op)] ++ clsd ++ [r])
-
-
-        closedPartParser :: [OpPart] -> P [Expr]
-        closedPartParser = foldr go (return [])
-            where
-                go :: OpPart -> P [Expr] -> P [Expr]
-                go mprt act = (++) <$> lst mprt <*> act
-                    where
-                        lst :: OpPart -> P [Expr]
-                        lst mprt = case mprt of
-                                Just prt -> iden prt *> return []
-                                _        -> liftA (flip cons []) exprParser
+                go :: Alternative f => OperatorPart -> OpP (f ExprSpan) -> OpP (f ExprSpan)
+                go mprt act = (<|>) <$> prtOpP mprt <*> act
+                prtOpP :: Alternative f => OperatorPart -> OpP (f ExprSpan)
+                prtOpP mprt = case mprt of
+                        Just prt -> pure empty <* var prt
+                        _        -> pure <$> topOpP
