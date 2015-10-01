@@ -10,7 +10,6 @@
 
 module Language.Angler.Parser.Lexer
         ( lexer
-        -- , lexToken
         , lexTokens
 
         , runLP
@@ -322,18 +321,18 @@ runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
 runLP input loc = runIdentity . runExceptT . flip runStateT initialST
     where
         initialST :: LPState
-        initialST = LPState
+        initialST = def
                 { _lp_buffer    = input
                 , _lp_last_char = '\n'
                 , _lp_loc       = loc
-                , _lp_bytes     = []
+                -- , _lp_bytes     = []
                 -- , _lp_last_tk   = Nothing
                 -- , _lp_last_loc  = srcLocSpan loc loc
                 -- , _lp_last_len  = 0
                 , _lp_lex_state = [layout, 0]           -- start in 'layout' state to
                                                         -- introduce the global layout
-                , _lp_context   = []
-                , _lp_srcfiles  = []
+                -- , _lp_context   = []
+                -- , _lp_srcfiles  = []
                 }
 
 execLP :: String -> SrcLoc -> LP a -> Either (Located Error) LPState

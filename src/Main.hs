@@ -1,12 +1,8 @@
 module Main where
 
-import           Language.Angler.AST
-import           Language.Angler.Parser.Lexer  (evalLP)
-import           Language.Angler.Parser.Parser (parseModule)
-
 import           Control.Lens
 import           Control.Monad                 (unless, when)
-import           Data.Default                  (Default(..))
+import           Data.List                     (intercalate)
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
 import           System.Directory              (doesFileExist)
 import           System.Exit                   (exitWith, ExitCode(..))
@@ -14,11 +10,12 @@ import           System.Environment            (getArgs)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
                                                 openFile, stdin)
 
-import           Language.Angler.SrcLoc
+import           Language.Angler.AST
+import           Language.Angler.Parser.Lexer  (evalLP, lexTokens)
+import           Language.Angler.Parser.Parser (parseModule)
+import           Language.Angler.MixfixParser  ()
 import           Language.Angler.Options
-import           Language.Angler.Parser.Token
-
-import           Data.List                     (intercalate)
+import           Language.Angler.SrcLoc
 
 main :: IO ()
 main = do
@@ -49,13 +46,7 @@ readModule options handle filepath = do
         when (view opt_tokens options) $ do
                 putStrLn "\n\n***** lexer\n"
                 case evalLP' lexTokens of
-                        Right ltks -> putStrLn (intercalate " " (map (showNL . view loc_insd) ltks))
-                            where
-                                showNL tk = case tk of
-                                       TkVSemicolon -> show tk ++ "\n"
-                                       TkVLCurly    -> show tk ++ "\n"
-                                       TkVRCurly    -> "\n" ++ show tk
-                                       _            -> show tk
+                        Right ltks -> putStrLn (intercalate " " (map (show . view loc_insd) ltks))
                         Left  _err -> return ()
 
         ast <- case evalLP' parseModule of

@@ -3,14 +3,17 @@ module Language.Angler.SymbolTable
         , Symbol(..)
         , lookup , (!)
         , elem, notElem
+        , insert
         ) where
 
 import           Language.Angler.AST
 
 -- import           Control.Lens
+
 import           Data.Map.Strict     (Map)
 import qualified Data.Map.Strict     as Map
 import           Data.Maybe          (isJust)
+
 import           Prelude             hiding (lookup, elem, notElem)
 
 type SymbolTable a = Map String (Symbol a)

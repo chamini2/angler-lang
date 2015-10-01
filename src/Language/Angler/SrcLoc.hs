@@ -23,6 +23,7 @@ module Language.Angler.SrcLoc
         ) where
 
 import           Control.Lens
+
 import           Prelude hiding (span)
 
 -- is only used in the lexer

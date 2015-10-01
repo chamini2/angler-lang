@@ -3,7 +3,7 @@
 module Language.Angler.Parser.LP
         ( LP
         , LayoutContext(..)
-        , LPState(..)
+        , LPState(..), def
         , lp_buffer, lp_last_char, lp_loc, lp_bytes
         -- , lp_last_tk, lp_last_loc, lp_last_len
         , lp_lex_state, lp_context, lp_srcfiles
@@ -22,6 +22,7 @@ import           Language.Angler.Error
 import           Control.Lens
 import           Control.Monad.Except   (ExceptT(..), throwError)
 import           Control.Monad.State    (StateT(..))
+import           Data.Default           (Default(..))
 import           Data.Maybe             (fromJust)
 import           Data.Word              (Word8)
 
@@ -52,6 +53,20 @@ data LPState
         , _lp_context   :: [LayoutContext]      -- contexts stack
         , _lp_srcfiles  :: [String]
         }
+
+instance Default LPState where
+        def = LPState
+                { _lp_buffer    = ""
+                , _lp_last_char = '\n'
+                , _lp_loc       = SrcLoc "" 1 1
+                , _lp_bytes     = []
+                -- , _lp_last_tk   = Nothing
+                -- , _lp_last_loc  = SrcSpanNoInfo
+                -- , _lp_last_len  = 0
+                , _lp_lex_state = []
+                , _lp_context   = []
+                , _lp_srcfiles  = []
+                }
 
 makeLenses ''LPState
 

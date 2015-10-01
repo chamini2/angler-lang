@@ -1,8 +1,15 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Language.Angler.Options where
+module Language.Angler.Options
+        ( Options(..), def
+        , optionDescrs
+        -- Lenses
+        , opt_warnings , opt_tokens , opt_ast , opt_stdlib, opt_paths
+        ) where
 
 import           Control.Lens
+
 import           Data.Default                  (Default(..))
+
 import           System.Console.GetOpt         (ArgDescr(..), OptDescr(..),
                                                 usageInfo)
 import           System.Exit                   (exitWith, ExitCode(..))

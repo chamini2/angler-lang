@@ -8,6 +8,7 @@ import           Control.Lens
 import           Control.Monad           (when)
 import           Control.Monad.State     (State, execState)
 
+import           Data.Default            (Default(..))
 import           Data.Foldable           (toList)
 import           Data.List               (intercalate)
 import           Data.Maybe              (isJust)
@@ -244,6 +245,12 @@ data PrettyShowState
         , _ps_lines     :: [(Indentation, String)]
         }
 
+instance Default PrettyShowState where
+        def = PrettyShowState
+                { _ps_indent = 4
+                , _ps_lines  = [(4, "")]
+                }
+
 makeLenses ''PrettyShowState
 
 class PrettyShow a where
@@ -260,7 +267,10 @@ prettyShowIndent n str = showLines . _ps_lines . flip execState initialST . psho
         tabs :: Indentation -> String
         tabs ind = concat (replicate ind str)
         initialST :: PrettyShowState
-        initialST = PrettyShowState n [(n, "")]
+        initialST = def
+                { _ps_indent = n
+                , _ps_lines  = [(n, "")]
+                }
 
 ----------------------------------------
 
