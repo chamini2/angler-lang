@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
+
 module Language.Angler.Parser.LP
         ( LP
         , LayoutContext(..)

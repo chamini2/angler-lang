@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Language.Angler.Monad
     ( STWarnings(..)
     , warn

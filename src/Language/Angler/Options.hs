@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+
 module Language.Angler.Options
         ( Options(..), def
         , optionDescrs

@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Language.Angler.MixfixParser where
 
 import           Language.Angler.AST
