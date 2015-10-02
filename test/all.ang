@@ -3,8 +3,8 @@ export (Nat, filter)
 import Data.List (List)
 import Data.List as L (_::_, Nil)
 
-fixity _._ infixL 10
-fixity _$_ infixL 0
+operator _._ infixL 10
+operator _$_ infixL 0
 
 id : forall t:Type . t -> t
 the : (select t:Type) -> t -> t
@@ -101,13 +101,9 @@ _+_ Z     m = m
 _+_ (S n) m = S (n + m)
 
 filter : forall t:Type . (t -> Bool) -> List t -> List t
--- filter g (x :: xs) {t = tpe} =
---         (if g x
---                 then _::_ x
---                 else the (List tpe)) filter g xs
 filter g (x L.:: xs) =
         (if g x
-                then _::_ x
+                then L._::_ x
                 else id) filter g xs
 filter _ (L.Nil) = L.Nil
 

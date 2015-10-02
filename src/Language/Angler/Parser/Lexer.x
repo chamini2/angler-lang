@@ -89,7 +89,7 @@ angler :-
 
 -- all states: skip whitespace
 $white_no_nl+   ;
-\t              ;               -- XXX: maybe give a warning
+\t              { warnTab }
 
 -- comments and 'comment' state: every time a "{-" is seen, a 'comment' state
 -- is pushed, that way we have nested comments
@@ -249,6 +249,9 @@ nextIsEOF _ _ _ (_,_,_,b) = null b
 ----------------------------------------
 -- Lexer actions
 
+warnTab :: Action
+warnTab span _buf _len = lp_warnings %= (|> Loc span TabCharacter) >> lexToken
+
 token :: Token -> Action
 token tk span _buf _len = return (Loc span tk)
 
@@ -333,14 +336,15 @@ runLP input loc = runIdentity . runExceptT . flip runStateT initialST
                                                         -- introduce the global layout
                 -- , _lp_context   = []
                 -- , _lp_srcfiles  = []
+                -- , _lp_warnings  = []
                 }
 
 execLP :: String -> SrcLoc -> LP a -> Either (Located Error) LPState
 execLP input loc = over _Right snd . runLP input loc
 
-evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) a
-evalLP input loc = over _Right fst . runLP input loc
- 
+evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, [Located Warning])
+evalLP input loc = over (_Right._2) (view lp_warnings) . runLP input loc
+
 ----------------------------------------
 -- lexer handling
 

@@ -4,6 +4,7 @@ module Language.Angler.Error
         ( Error(..)
         , LexError(..)
         , ParseError(..)
+        , Warning(..)
         ) where
 
 data Error
@@ -29,4 +30,9 @@ data ParseError
   | PErrNoVariablesIn           String
   | PErrNoVariableIn            String
   | PErrNoBindIn                String
+  deriving Show
+
+data Warning
+  = TabCharacter
+  | Warn                        String
   deriving Show

@@ -7,6 +7,7 @@ module Language.Angler.Parser.LP
         , lp_buffer, lp_last_char, lp_loc, lp_bytes
         -- , lp_last_tk, lp_last_loc, lp_last_len
         , lp_lex_state, lp_context, lp_srcfiles
+        , lp_warnings
         , Byte
 
         , throwError
@@ -52,6 +53,7 @@ data LPState
         , _lp_lex_state :: [Int]                -- lexer states stack
         , _lp_context   :: [LayoutContext]      -- contexts stack
         , _lp_srcfiles  :: [String]
+        , _lp_warnings  :: [Located Warning]
         }
 
 instance Default LPState where
@@ -66,6 +68,7 @@ instance Default LPState where
                 , _lp_lex_state = []
                 , _lp_context   = []
                 , _lp_srcfiles  = []
+                , _lp_warnings  = []
                 }
 
 makeLenses ''LPState

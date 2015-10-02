@@ -46,12 +46,12 @@ readModule options handle filepath = do
         when (view opt_tokens options) $ do
                 putStrLn "\n\n***** lexer\n"
                 case evalLP' lexTokens of
-                        Right ltks -> putStrLn (intercalate " " (map (show . view loc_insd) ltks))
-                        Left  _err -> return ()
+                        Right (ts,_) -> putStrLn (intercalate " " (map (show . view loc_insd) ts))
+                        Left  _err   -> return ()
 
         ast <- case evalLP' parseModule of
-                Right ast -> return ast
-                Left  err -> printFailure err 1
+                Right (ast,ws) -> mapM print ws >> return ast
+                Left  err      -> printFailure err 1
 
         when (view opt_ast options) $ do
                 putStrLn "\n\n***** parser\n"
