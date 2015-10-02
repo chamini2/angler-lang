@@ -20,6 +20,7 @@ module Language.Angler.Parser.Lexer
         ) where
 
 import           Language.Angler.Error
+import           Language.Angler.Monad
 import           Language.Angler.SrcLoc
 import           Language.Angler.Parser.Token
 import           Language.Angler.Parser.LP
@@ -250,7 +251,7 @@ nextIsEOF _ _ _ (_,_,_,b) = null b
 -- Lexer actions
 
 warnTab :: Action
-warnTab span _buf _len = lp_warnings %= (|> Loc span TabCharacter) >> lexToken
+warnTab span _buf _len = warn (Loc span TabCharacter) >> lexToken
 
 token :: Token -> Action
 token tk span _buf _len = return (Loc span tk)

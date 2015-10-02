@@ -17,8 +17,9 @@ module Language.Angler.Parser.LP
         , getOffside
         ) where
 
-import           Language.Angler.SrcLoc
 import           Language.Angler.Error
+import           Language.Angler.Monad
+import           Language.Angler.SrcLoc
 
 import           Control.Lens
 import           Control.Monad.Except   (ExceptT(..), throwError)
@@ -56,6 +57,11 @@ data LPState
         , _lp_warnings  :: [Located Warning]
         }
 
+makeLenses ''LPState
+
+instance STWarnings LPState where
+        st_warnings = lp_warnings
+
 instance Default LPState where
         def = LPState
                 { _lp_buffer    = ""
@@ -70,8 +76,6 @@ instance Default LPState where
                 , _lp_srcfiles  = []
                 , _lp_warnings  = []
                 }
-
-makeLenses ''LPState
 
 ----------------------------------------
 -- LPState's manipulation
