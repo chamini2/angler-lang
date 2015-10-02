@@ -419,9 +419,9 @@ Body :: { BodySpan }
 
 parseError :: Located Token -> LP a
 parseError (Loc l tk) = case tk of
-        -- TkVLCurly    -> lexer parseError
-        -- TkVRCurly    -> lexer parseError
-        -- TkVSemicolon -> lexer parseError
+        TkVLCurly    -> lexer parseError
+        TkVRCurly    -> lexer parseError
+        TkVSemicolon -> lexer parseError
         _            -> throwError (Loc l (ParseError (PErr (show tk))))
 
 throwPError :: ParseError -> SrcSpan -> LP a
