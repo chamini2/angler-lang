@@ -1,0 +1,5 @@
+export (List, _::_, Nil)
+
+closed List : (select a:Type) -> Type with
+        Nil  : List a
+        _::_ : a -> List a -> List a

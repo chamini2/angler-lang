@@ -46,6 +46,8 @@ executable angler
                                 -- Data.Default
                         , directory
                                 -- System.Directory
+                        , filepath
+                                -- System.FilePath
                         , lens
                                 -- Control.Lens
                         , megaparsec

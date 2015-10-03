@@ -1,22 +1,31 @@
 module Language.Angler.SymbolTable
-        ( SymbolTable
-        , Symbol(..)
-        , lookup , (!)
-        , elem, notElem
+        ( SymbolTable, SymbolTableSpan
+
+        , Symbol(..), SymbolSpan
+
+        , Map.empty
+        , Map.lookup, (Map.!)
         , insert
+        , Map.delete
+
+        , elem
+        , Map.mapKeys
+        , Map.filterWithKey
         ) where
 
 import           Language.Angler.AST
+import           Language.Angler.SrcLoc
 
 -- import           Control.Lens
 
-import           Data.Map.Strict     (Map)
-import qualified Data.Map.Strict     as Map
-import           Data.Maybe          (isJust)
+import           Data.Map.Strict        (Map)
+import qualified Data.Map.Strict        as Map
 
-import           Prelude             hiding (lookup, elem, notElem)
+import           Prelude                hiding (elem, notElem)
+import qualified Prelude                as P (elem)
 
 type SymbolTable a = Map String (Symbol a)
+type SymbolTableSpan = SymbolTable SrcSpan
 
 data Symbol a
   = Symbol
@@ -24,23 +33,13 @@ data Symbol a
         , _sym_val      :: Expression a
         , _sym_annot    :: a
         }
-
-lookup :: String -> SymbolTable a -> Maybe (Symbol a)
-lookup idn = Map.lookup idn
-
-(!) :: SymbolTable a -> String -> Symbol a
-(!) tab idn = check (lookup idn tab)
-    where
-        check ms = case ms of
-                Just x  -> x
-                Nothing -> error ("SymbolTable.!: identifier " ++ idn ++
-                                  " is not an element in the table")
-
-elem :: String -> SymbolTable a -> Bool
-elem idn = isJust . lookup idn
-
-notElem :: String -> SymbolTable a -> Bool
-notElem idn = not . elem idn
+type SymbolSpan = Symbol SrcSpan
 
 insert :: String -> Symbol a -> SymbolTable a -> (SymbolTable a, Bool)
 insert idn sym tab = (Map.insert idn sym tab, notElem idn tab)
+
+elem :: String -> SymbolTable a -> Bool
+elem idn = P.elem idn . Map.keys
+
+notElem :: String -> SymbolTable a -> Bool
+notElem idn = not . elem idn

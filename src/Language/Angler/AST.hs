@@ -34,10 +34,10 @@ type ModuleSpan = Module SrcSpan
 
 data Import a
   = Import
-        { _impr_path    :: FilePath
-        , _impr_as      :: Maybe (Identifier a)
-        , _impr_spcfc   :: Maybe (Seq (Identifier a))   -- Nothing means to import everything
-        , _impr_annot   :: a
+        { _imp_path     :: FilePath
+        , _imp_as       :: Maybe (Identifier a)
+        , _imp_spcfc    :: Maybe (Seq (Identifier a))   -- Nothing means to import everything
+        , _imp_annot    :: a
         }
   deriving Show
 type ImportSpan = Import SrcSpan

@@ -1,15 +1,22 @@
-{-# LANGUAGE FlexibleInstances #-}
-
 module Language.Angler.Error
-        ( Error(..)
+        ( Warning(..)
+        , Error(..)
         , LexError(..)
         , ParseError(..)
-        , Warning(..)
+        , IOError(..)
         ) where
+
+import           Prelude hiding (IOError)
+
+data Warning
+  = TabCharacter
+  | Warn                        String
+  deriving Show
 
 data Error
   = LexError    LexError
   | ParseError  ParseError
+  | IOError     IOError
   | Err         String
   deriving Show
 
@@ -32,7 +39,14 @@ data ParseError
   | PErrNoBindIn                String
   deriving Show
 
-data Warning
-  = TabCharacter
-  | Warn                        String
+data IOError
+  = IOErr                       String
+
+  -- import
+  | ImportingNoExport           String
+
+  -- modules / files
+  | OpenModule                  String
+  | TooManyModules
+  | NoModules
   deriving Show

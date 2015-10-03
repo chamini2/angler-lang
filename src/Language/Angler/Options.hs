@@ -4,7 +4,7 @@ module Language.Angler.Options
         ( Options(..), def
         , optionDescrs
         -- Lenses
-        , opt_warnings , opt_tokens , opt_ast , opt_stdlib, opt_paths
+        , opt_warnings, opt_tokens, opt_ast, opt_stdin, opt_stdlib, opt_path
         ) where
 
 import           Control.Lens
@@ -18,15 +18,16 @@ import           System.Directory              (doesDirectoryExist)
 
 data Options
   = Options
-        { _opt_warnings  :: Bool
-        , _opt_tokens    :: Bool                 -- maybe change to _opt_verbose
-        , _opt_ast       :: Bool
-        -- , _opt_symbols   :: Bool
-        -- , _opt_execute   :: Bool
+        { _opt_warnings :: Bool
+        , _opt_tokens   :: Bool                 -- maybe change to _opt_verbose
+        , _opt_ast      :: Bool
+        , _opt_stdin    :: Bool
+        -- , _opt_symbols  :: Bool
+        -- , _opt_execute  :: Bool
 
         -- path managing for module searching
         , _opt_stdlib   :: Bool
-        , _opt_paths     :: [FilePath]
+        , _opt_path     :: [FilePath]
         }
   deriving (Eq, Show)
 
@@ -37,18 +38,19 @@ instance Default Options where
         { _opt_warnings = True
         , _opt_tokens   = False
         , _opt_ast      = False
+        , _opt_stdin    = False
         -- , _opt_symbols  = False
         -- , _opt_execute  = True
-        , _opt_stdlib  = True
-        , _opt_paths    = ["./"]
+        , _opt_stdlib   = True
+        , _opt_path     = ["."]                 -- search path
         }
 
 optionDescrs :: [OptDescr (Options -> IO Options)]
 optionDescrs =
-        [ Option ['h'] ["help"]        (NoArg (const (putStrLnSuccess help)))
+        [ Option ['h'] ["help"]        ((NoArg . const . putLnSuccess) help)
                 "shows this help message"
 
-        , Option ['v'] ["version"]     (NoArg (const (putStrLnSuccess version)))
+        , Option ['v'] ["version"]     ((NoArg . const . putLnSuccess) version)
                 "shows version number"
 
         , Option ['w'] ["warnings"]    (NoArg (optBool opt_warnings True))
@@ -56,6 +58,9 @@ optionDescrs =
 
         , Option ['W'] ["no-warnings"] (NoArg (optBool opt_warnings False))
                 "suppress all warnings"
+
+        , Option ['s'] ["stdin"]      (NoArg (optBool opt_stdin True))
+                "shows the tokens recognized by the lexer"
 
         , Option []    ["tokens"]      (NoArg (optBool opt_tokens True))
                 "shows the tokens recognized by the lexer"
@@ -75,22 +80,20 @@ optionDescrs =
         , Option []    ["no-stdlib"]   (NoArg (optBool opt_stdlib False))
                 "removes the standard library from the path"
 
-        , Option ['p'] ["path"]        (ReqArg optPaths "PATH")
+        , Option ['p'] ["path"]        (ReqArg optPath "PATH")
                 "adds a directory to the path"
         ]
     where
-        -- optBool :: Lens' Options Bool -> Bool -> Options -> IO Options
+        optBool :: Lens' Options Bool -> Bool -> Options -> IO Options
         optBool lns b = return . set lns b
 
-        optPaths :: String -> Options -> IO Options
-        optPaths dir opt = do
-                dirExists <- doesDirectoryExist dir
-                if dirExists
-                        then return (over opt_paths (dir :) opt)
-                        else ioError (userError (dir ++ " is not a valid directory"))
+        optPath :: String -> Options -> IO Options
+        optPath dir opt = doesDirectoryExist dir >>= \ans ->
+                if ans then return (over opt_path (|> dir) opt)
+                       else ioError (userError ("directory '" ++ dir ++ "' does not exist"))
 
-        putStrLnSuccess :: String -> IO Options
-        putStrLnSuccess str = putStrLn str >> exitWith ExitSuccess
+        putLnSuccess :: String -> IO Options
+        putLnSuccess str = putStrLn str >> exitWith ExitSuccess
 
         help :: String
         help = flip usageInfo optionDescrs "usage: angler [OPTIONS...] [FILE]\n" ++
