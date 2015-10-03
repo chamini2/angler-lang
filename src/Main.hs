@@ -1,17 +1,14 @@
 module Main where
 
-import           Control.Applicative           (Alternative(..))
 import           Control.Lens
 import           Control.Monad                 (forM, unless, when)
 
-import           Data.Foldable                 (forM_, toList)
-import           Data.List                     (intercalate)
-import           Data.Sequence                 (Seq)
+import           Data.Foldable                 (toList)
 
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
 import           System.Directory              (doesFileExist)
-import           System.Exit                   (exitWith, ExitCode(..))
-import           System.Environment            (getArgs, getExecutablePath)
+-- import           System.Exit                   (exitWith, ExitCode(..))
+import           System.Environment            (getArgs)
 import           System.FilePath               ((</>), addExtension, pathSeparator)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
                                                 openFile, stdin)
@@ -44,7 +41,6 @@ main = do
                 ([ f ], False) -> do
                         h <- openModule f ((showError . IOError . OpenModule) f)
                         return (f, h)
-                ([ f ], False) -> openFile f ReadMode >>= \h -> return (f, h)
                 ([ ]  , True ) -> return ("<stdin>", stdin)
                 ([ ]  , False) -> showError (IOError NoModules)
                 (_ : _, _    ) -> showError (IOError TooManyModules)
@@ -84,8 +80,8 @@ readModule options filepath handle = do
     where
         readImports :: Options -> ModuleSpan -> IO [(SymbolTableSpan, ModuleSpan)]
         readImports opts ast = forM (imports ast) $ \(Import path as mfs _) -> do
-                handle <- tryReadFile (qualifiedToPath path) (view opt_path opts)
-                (table, ast) <- readModule opts path handle
+                handle' <- tryReadFile (qualifiedToPath path) (view opt_path opts)
+                (table, ast') <- readModule opts path handle'
 
                 let mfids = over (_Just.traverse) (view idn_str) mfs
                 let tableIm = filterWithKey (checkIm mfids) table

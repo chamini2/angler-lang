@@ -47,24 +47,24 @@ type BodySpan = Body SrcSpan
 
 data BodyStmt a
   = OpenType
-        { _open_id      :: Identifier a
+        { _open_idn     :: Identifier a
         , _open_type    :: ExprWhere a
-        , _open_cnstrc  :: Maybe (Seq (TypeBind a))
+        , _open_cnts    :: Maybe (Seq (TypeBind a))
         , _stm_annot    :: a
         }
   | ReopenType
-        { _rpen_id      :: Identifier a
-        , _rpen_cnstrc  :: Seq (TypeBind a)
+        { _rpen_idn     :: Identifier a
+        , _rpen_cnts    :: Seq (TypeBind a)
         , _stm_annot    :: a
         }
   | ClosedType
-        { _clsd_id      :: Identifier a
+        { _clsd_idn     :: Identifier a
         , _clsd_type    :: ExprWhere a
-        , _clsd_cnstrc  :: Seq (TypeBind a)
+        , _clsd_cnts    :: Seq (TypeBind a)
         , _stm_annot    :: a
         }
   | FunctionDecl
-        { _fdec_id      :: Identifier a
+        { _fdec_idn     :: Identifier a
         , _fdec_type    :: ExprWhere a
         , _stm_annot    :: a
         }
@@ -74,10 +74,10 @@ data BodyStmt a
         , _stm_annot    :: a
         }
   | OperatorDef
-        { _fixd_id      :: Identifier a
+        { _fixd_idn     :: Identifier a
         , _fixd_fix     :: Fixity a
         , _fixd_prec    :: Maybe Int
-        , _fixd_annot   :: a
+        , _stm_annot    :: a
         }
   deriving Show
 type BodyStmtSpan = BodyStmt SrcSpan
@@ -92,6 +92,11 @@ data Where f a
 type WhereSpan f   = Where f SrcSpan
 type ExprWhere a   = Where Expression a
 type ExprWhereSpan = Where Expression SrcSpan
+
+whereToLet :: ExprWhere a -> Expression a
+whereToLet (Where ex mbd an) = if isJust mbd
+        then let Just bd = mbd in Let bd ex an
+        else ex
 
 data Expression a
   = Var
@@ -139,7 +144,7 @@ type ExpressionSpan = Expression SrcSpan
 
 data TypeBind a
   = TypeBind
-        { _typ_id       :: Identifier a
+        { _typ_idn      :: Identifier a
         , _typ_type     :: ExprWhere a
         , _typ_annot    :: a
         }
@@ -181,7 +186,7 @@ instance Ord (Fixity a) where
 
 data Argument a
   = Binding
-        { _bind_id      :: Identifier a
+        { _bind_idn     :: Identifier a
         , _arg_annot    :: a
         }
   | DontCare
@@ -198,7 +203,7 @@ type ImplicitsSpan = Implicits SrcSpan
 
 data ImplicitBinding a
   = ImplicitBind
-        { _impl_id      :: Identifier a
+        { _impl_idn     :: Identifier a
         , _impl_expr    :: Expression a
         , _impl_annot   :: a
         }

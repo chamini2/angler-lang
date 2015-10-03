@@ -1,10 +1,4 @@
-module Language.Angler.Error
-        ( Warning(..)
-        , Error(..)
-        , LexError(..)
-        , ParseError(..)
-        , IOError(..)
-        ) where
+module Language.Angler.Error where
 
 import           Prelude hiding (IOError)
 
@@ -16,6 +10,7 @@ data Warning
 data Error
   = LexError    LexError
   | ParseError  ParseError
+  | CheckError CheckError
   | IOError     IOError
   | Err         String
   deriving Show
@@ -37,6 +32,11 @@ data ParseError
   | PErrNoVariablesIn           String
   | PErrNoVariableIn            String
   | PErrNoBindIn                String
+  deriving Show
+
+data CheckError
+  = CErr                        String
+  | AlreadyInSymbolTable        String
   deriving Show
 
 data IOError
