@@ -1,7 +1,7 @@
 export (Nat, filter)
 
-import Data.List (List)
-import Data.List as L (_::_, Nil)
+import List as L (_::_, Nil)
+import List (List)
 
 operator _._ infixL 10
 operator _$_ infixL 0
@@ -88,7 +88,7 @@ if_then_else_ : forall t:Type . Bool -> t -> t -> t
 if_then_else_ True yes _ = yes
 if_then_else_ False _ no = no
 
-closed Vect : forall t:Type . Nat -> t -> Type with
+closed Vect : Nat -> (select t:Type) -> Type with
         Nil  : Vect Z t
         _::_ : forall n:Nat . t -> Vect n t -> Vect (S n) t
 

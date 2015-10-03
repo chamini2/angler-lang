@@ -29,11 +29,13 @@ executable angler
   hs-source-dirs:       src
   main-is:              Main.hs
 
+  build-tools:          alex, happy
   other-modules:          Language.Angler.Parser.Lexer
                         , Language.Angler.Parser.Parser
-  build-tools:          alex, happy
 
-  -- other-extensions:
+  default-extensions:   TemplateHaskell
+  other-extensions:     RankNTypes, FlexibleContexts
+
   build-depends:          base >=4.8 && <4.9
                                 -- GHC 7.10
                         , array

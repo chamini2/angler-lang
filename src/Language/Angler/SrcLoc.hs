@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Language.Angler.SrcLoc
         ( SrcLoc(..)
         , locMove

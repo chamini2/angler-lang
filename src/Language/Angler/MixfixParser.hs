@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.Angler.MixfixParser where
@@ -15,7 +14,7 @@ import           Control.Monad.State         (State, runState)
 import           Data.Map.Strict             (Map, lookup)
 import           Data.Sequence               (Seq, fromList)
 
-import           Text.Megaparsec             (ParsecT(..), choice, eof, runParserT, token, try)
+import           Text.Megaparsec             (ParsecT, choice, eof, runParserT, token, try)
 import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
                                               setSourceLine, setSourceColumn)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))

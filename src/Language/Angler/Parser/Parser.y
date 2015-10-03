@@ -1,4 +1,6 @@
 {
+{-# LANGUAGE RankNTypes #-}
+
 module Language.Angler.Parser.Parser
         ( parseModule ) where
 
@@ -422,12 +424,12 @@ parseError (Loc l tk) = case tk of
         TkVLCurly    -> lexer parseError
         TkVRCurly    -> lexer parseError
         TkVSemicolon -> lexer parseError
-        _            -> throwError (Loc l (ParseError (PErr (show tk))))
+        _            -> (throwError . Loc l . ParseError . PErr . show) tk
 
 throwPError :: ParseError -> SrcSpan -> LP a
 throwPError err = throwError . flip Loc (ParseError err)
 
--- getWhere :: Maybe (BodySpan, SrcSpan) -> f -> (Lens' f SrcSpan) -> Where f SrcSpan
+getWhere :: Maybe (BodySpan, SrcSpan) -> f SrcSpan -> (Lens' (f SrcSpan) SrcSpan) -> WhereSpan f
 getWhere mwhre e elns = case mwhre of
         Just (bdy, spn) -> Where e (Just bdy) (srcSpanSpan (e^.elns) spn)
         Nothing         -> Where e Nothing    (e^.elns)

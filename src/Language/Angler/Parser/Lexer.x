@@ -360,7 +360,7 @@ lexToken = do
                 AlexEOF -> do
                     ls' <- peekLP lp_lex_state
                     if ls' == comment
-                        then throwError (Loc (srcLocSpan l l) (LexError LErrUnterminatedComment))
+                        then (throwError . Loc (srcLocSpan l l) . LexError) LErrUnterminatedComment
                         else do
                         ctx <- use lp_context
                         if not (null ctx)
@@ -368,7 +368,7 @@ lexToken = do
                             then popLP lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
                             else return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
-                        throwError (Loc (srcLocSpan l l) (LexError (LErrUnexpectedCharacter c')))
+                        (throwError . Loc (srcLocSpan l l) . LexError) (LErrUnexpectedCharacter c')
                 AlexSkip  inp' _len -> setInput inp' >> lexToken
                 AlexToken inp'@(l',_,_,_) len act -> setInput inp' >> act (srcLocSpan l l') b len
 
