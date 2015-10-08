@@ -17,11 +17,12 @@ import           Language.Angler.AST
 import           Language.Angler.Error
 import           Language.Angler.Parser.Lexer  (evalLP, lexTokens)
 import           Language.Angler.Parser.Parser (parseModule)
+import           Language.Angler.Monad
 import           Language.Angler.MixfixParser  ()
 import           Language.Angler.Options
 import           Language.Angler.SrcLoc
-import           Language.Angler.SymbolTable   hiding (empty)
-import qualified Language.Angler.SymbolTable   as ST (empty)
+import           Language.Angler.ScopedTable   hiding (empty)
+import qualified Language.Angler.ScopedTable   as ST (empty)
 
 import           Prelude                       hiding (IOError, elem)
 import qualified Prelude                       as P (elem)
@@ -34,7 +35,7 @@ main = do
         let (optActions, nonOptions, optErrors) = getOpt Permute optionDescrs args
         strErrorsUnlessNull optErrors
 
-        options <- foldl (>>=) (return def) optActions
+        options <- foldActions optActions def
         print options
 
         (filepath, handle) <- case (nonOptions, view opt_stdin options) of
@@ -48,7 +49,7 @@ main = do
         (table, ast) <- readModule options filepath handle
         return ()
 
-readModule :: Options -> FilePath -> Handle -> IO (SymbolTableSpan, ModuleSpan)
+readModule :: Options -> FilePath -> Handle -> IO (ScopedTable (), ModuleSpan)
 readModule options filepath handle = do
         -- setting the flags for the import files
         let opts = options & (opt_stdin  .~ False)
@@ -70,21 +71,21 @@ readModule options filepath handle = do
                 Right (ast,ws) -> mapM_ print ws >> return ast
                 Left  err      -> showError err
 
-        imprtsTables <- readImports opts ast
+        -- imprtsTables <- readImports opts ast
 
         when (view opt_ast options) $ do
                 putStr "\n\n***** parser\n\n"
                 putStrLn (prettyShow ast)
 
         return (ST.empty, ast)
-    where
+    {-where
         readImports :: Options -> ModuleSpan -> IO [(SymbolTableSpan, ModuleSpan)]
         readImports opts ast = forM (imports ast) $ \(Import path as mfs _) -> do
                 handle' <- tryReadFile (qualifiedToPath path) (view opt_path opts)
                 (table, ast') <- readModule opts path handle'
 
                 let mfids = over (_Just.traverse) (view idn_str) mfs
-                let tableIm = filterWithKey (checkIm mfids) table
+                let tableIm = filterByKey (checkIm mfids) table
 
                 let exportsErrors = filter (not . flip elem tableIm) (maybe [] toList mfids)
                 putStr "importing not exported functions: " >> print exportsErrors
@@ -97,8 +98,8 @@ readModule options filepath handle = do
                 imports :: ModuleSpan -> [ImportSpan]
                 imports = toListOf (mod_imports.traverse)
 
-                checkIm :: Foldable f => Maybe (f String) -> String -> SymbolSpan -> Bool
-                checkIm mfs k _ = maybe True (k `P.elem`) mfs
+                checkIm :: Foldable f => Maybe (f String) -> String -> Bool
+                checkIm mfs k = maybe True (k `P.elem`) mfs
 
                 getAs :: Maybe IdentifierSpan -> String
                 getAs = maybe "" (view (idn_str.to (++".")))
@@ -115,7 +116,7 @@ readModule options filepath handle = do
                         go :: Char -> FilePath -> FilePath
                         go c path = case c of
                                 '.' -> pathSeparator : path
-                                _   -> c             : path
+                                _   -> c             : path-}
 
 strError :: String -> IO a
 strError = ioError . userError
