@@ -314,7 +314,7 @@ instance PrettyShow (Expression a) where
         pshow expr = case expr of
                 Var str _           -> string "«" >> string str >> string "»"
                 Lit lit _           -> pshow lit
-                Apply exprs   _     -> pshows (string " ") exprs
+                Apply exprs   _     -> string "(" >> pshows (string " ") exprs >> string ")"
                 Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
                 Let bdy expr' _     -> do
                         raise >> line
