@@ -14,8 +14,7 @@ import           Language.Angler.SrcLoc
 
 import           PrettyShow
 
-import           Control.Applicative         (Alternative(..), (<|>), {-(<*>),
-                                              (<*), (*>),-} liftA, many, {-some-})
+import           Control.Applicative         (Alternative(..), (<|>), liftA, many)
 import           Control.Lens                hiding (op, below, parts)
 import           Control.Monad               (forM_)
 import           Control.Monad.State         (State, runState)
@@ -177,11 +176,8 @@ mixfixWhere whre = do
 
 mixfixExpression :: ExpressionSpan -> Mixfix ExpressionSpan
 mixfixExpression expr = do
-        eit <- case expr of
-                Apply xs _ -> parse (views exp_annot srcSpanFile expr) (toList xs)
-                _          -> return (Right expr)
-
-        case eit of
+        eit   <- parse [expr]
+        expr' <- case eit of
                 Left perr -> do
                         let msgs = errorMessages perr
                             pos  = errorPos perr
@@ -190,9 +186,16 @@ mixfixExpression expr = do
                         forM_ msgs (pushM opp_errs . Loc spn . CheckError . CErr . show)
                         return expr
                 Right x -> return x
-
-parse :: FilePath -> [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
-parse filepath = runOpP generateOpP filepath
+        return (flattenExpression expr')
+    where
+        parse :: [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
+        parse = runOpP generateOpP (views exp_annot srcSpanFile expr)
+        flattenExpression :: ExpressionSpan -> ExpressionSpan
+        flattenExpression expr = case expr of
+                Apply xs an -> case toList xs of
+                        [x] -> flattenExpression x
+                        xs  -> Apply (fromList (fmap flattenExpression xs)) an
+                _ -> expr
 
 mixfixTypeBind :: TypeBindSpan -> Mixfix TypeBindSpan
 mixfixTypeBind = return
@@ -298,9 +301,9 @@ generateOpP = topOpP <* eof
                                 parts :: PrecedenceTable -> [String]
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)
                                 retake :: ExprSpan -> OpP ExprSpan
-                                retake x = case x of
-                                        Var _ _ -> return x
-                                        Lit _ _ -> return x
+                                retake expr = case expr of
+                                        Var _ _ -> return expr
+                                        Lit _ _ -> return expr
                                         Apply xs _ -> do
                                                 input <- getInput
                                                 setInput (toList xs)
@@ -311,8 +314,24 @@ generateOpP = topOpP <* eof
                                                 arg' <- lift (mixfixArgument arg)
                                                 x'   <- lift (mixfixExpression x)
                                                 return (Lambda arg' x' an)
-                                        -- FIXME: Add other cases, better in mixfixExpression
-                                        _ -> return x
+                                        Let body x an -> do
+                                                body' <- lift (mixfixBody body)
+                                                x'    <- lift (mixfixExpression x)
+                                                return (Let body' x' an)
+                                        Forall typs x an -> do
+                                                typs' <- lift (mapM mixfixTypeBind typs)
+                                                x'    <- lift (mixfixExpression x)
+                                                return (Forall typs' x' an)
+                                        Exists typ x an -> do
+                                                typ' <- lift (mixfixTypeBind typ)
+                                                x'   <- lift (mixfixExpression x)
+                                                return (Exists typ' x' an)
+                                        Select typ an -> do
+                                                typ' <- lift (mixfixTypeBind typ)
+                                                return (Select typ' an)
+                                        ImplicitExpr xs an -> do
+                                                xs' <- lift (mapM mixfixImplicit xs)
+                                                return (ImplicitExpr xs' an)
 
                 closedOpP :: OpP ExprSpan
                 closedOpP = do

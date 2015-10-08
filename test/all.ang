@@ -3,9 +3,6 @@ export (Nat, filter)
 import List as L (_::_, Nil)
 import List (List)
 
-operator _._ infixL 10
-operator _$_ infixL 0
-
 id : forall t:Type . t -> t
 the : (select t:Type) -> t -> t
 
@@ -18,11 +15,11 @@ the t x = id { t = t } x
 typeOf : forall x:Type . x -> (exists t:Type1 . (select x : t))
 typeOf x = x
 
+operator _._ infixL 10
 _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
 (f . g) x = f (g x)
 
--- _$_ (infix 0) : forall a:Type, b:Type . (a -> b) -> a -> b
-
+operator _$_ infixL 1
 _$_ : forall a:Type, b:Type . (a -> b) -> a -> b
 f $ x = f x
 
@@ -73,17 +70,7 @@ foldr f (x :: xs) y = f x rest
                 rest = foldr f xs y
 foldr _ Nil       y = y
 
-{-closed Bool : Type with
-        closed True  : Bool with
-                Yes  : True
-                Yeap : True
-        closed False : Bool with
-                No : False
-                Nope : False -}
-
--- macros higienicos
--- if True then if False then 1 else 2 else 3
-
+operator if_then_else_ prefix 0
 if_then_else_ : forall t:Type . Bool -> t -> t -> t
 if_then_else_ True yes _ = yes
 if_then_else_ False _ no = no
@@ -92,6 +79,7 @@ closed Vect : Nat -> (select t:Type) -> Type with
         Nil  : Vect Z t
         _::_ : forall n:Nat . t -> Vect n t -> Vect (S n) t
 
+operator _+_ infixL 3
 _+_ : t -> t -> t
         where t = Nat
 -- t no está disponible aquí
@@ -129,6 +117,7 @@ firstZ (Z :: xs) = Z
 firstZ (_ :: xs) = S (firstZ xs)
 -- firstZ Nil       = error "no Z in Vect"      -- no strings yet
 
+operator _=_ infixL 9
 _=_ : Type -> Type -> Type
 (a = b) = a               -- parses a = «b = a»
 
