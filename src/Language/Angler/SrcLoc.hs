@@ -1,5 +1,6 @@
 module Language.Angler.SrcLoc
         ( SrcLoc(..)
+        , startLoc
         , locMove
 
         , SrcSpan(..)
@@ -33,6 +34,9 @@ data SrcLoc
         , srcLocCol     :: Int     -- column number, begins at 1
         }
   deriving Show
+
+startLoc :: FilePath -> SrcLoc
+startLoc f = SrcLoc f 1 1
 
 locMove :: SrcLoc -> Char -> SrcLoc
 locMove (SrcLoc file l c) chr = case chr of
