@@ -15,7 +15,7 @@ the t x = id { t = t } x
 -- probably impossible
 -- typeOf : exists t:Type ; t -> t
 -- typeOf x = x
-typeOf : forall x:Type . x -> (exists t:Type1 ; (select x : t))
+typeOf : forall x:Type . x -> (exists t:Type1 . (select x : t))
 typeOf x = x
 
 _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
@@ -107,7 +107,7 @@ filter g (x L.:: xs) =
                 else id) filter g xs
 filter _ (L.Nil) = L.Nil
 
-filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists m:Nat ; Vect m t
+filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists m:Nat . Vect m t
 filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
 filterVect _ (Nil    ) = Nil
 -- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs

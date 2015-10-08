@@ -10,7 +10,7 @@
 
 module Language.Angler.Parser.Lexer
         ( lexer
-        , runLexer
+        , lexProgram
 
         , runLP
         , execLP
@@ -50,7 +50,7 @@ $white_no_nl  = $whitechar # \n
 
 $digit        = 0 - 9
 $hexdigit     = [ $digit a - f A - F ]
-$symbol       = [ \- \! \@ \# \$ \% \& \* \+ \/ \\ \< \= \> \^ \| \~ \? \` \[ \] \: \. ]
+$symbol       = [ \- \! \@ \# \$ \% \& \* \+ \/ \\ \< \= \> \^ \| \~ \? \` \[ \] \: \; \. ]
 $small        = a - z
 $large        = A - Z
 $alpha        = [ $small $large ]
@@ -115,14 +115,12 @@ $white_no_nl+   ;
 <0> {
         \n      { push bol }
         @ident  { identifier TkIdentifier }
-        -- @imprt  { identifier TkImportPath }
         @qualf  { identifier TkQualified  }
 
         @int    { tokenStore (TkInteger . read) }
         @char   { tokenStore (TkChar    . read) }
         @string { tokenStore (TkString  . read) }
 
-        \;      { token TkSemicolon }
         \,      { token TkComma     }
         -- \@      { token TkAt        }
 
@@ -179,7 +177,6 @@ reserved = Map.fromList
 
         -- symbols
         , (":"        , TkColon     )
-        -- , (";"        , TkSemicolon )
         , ("."        , TkDot       )
         , ("->"       , TkArrow     )
         , ("\\"       , TkBackslash )
@@ -346,8 +343,8 @@ execLP input loc = over _Right snd . runLP input loc
 evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, [Located Warning])
 evalLP input loc = over (_Right._2) (view lp_warnings) . runLP input loc
 
-runLexer :: String -> SrcLoc -> Either (Located Error) ([Located Token], [Located Warning])
-runLexer input loc = evalLP input loc lexTokens
+lexProgram :: String -> SrcLoc -> Either (Located Error) ([Located Token], [Located Warning])
+lexProgram input loc = evalLP input loc lexTokens
     where
         lexTokens :: LP [Located Token]
         lexTokens = do

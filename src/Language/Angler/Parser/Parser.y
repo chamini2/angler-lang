@@ -2,11 +2,11 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Language.Angler.Parser.Parser
-        ( runLexer
-        , runParser
+        ( lexProgram
+        , parseProgram
         ) where
 
-import           Language.Angler.Parser.Lexer (evalLP, lexer, popContext, runLexer)
+import           Language.Angler.Parser.Lexer (evalLP, lexer, popContext, lexProgram)
 
 import           Language.Angler.AST
 import           Language.Angler.Error
@@ -67,7 +67,7 @@ import           Data.Maybe                   (isJust, fromJust)
         'infixN'                { Loc $$ TkInfixN       }
 
         ':'                     { Loc $$ TkColon         }
-        ';'                     { Loc $$ TkSemicolon     }
+        -- ';'                     { Loc $$ TkSemicolon     }
         '.'                     { Loc $$ TkDot           }
         '->'                    { Loc $$ TkArrow         }
         '\ '                    { Loc $$ TkBackslash     }
@@ -315,8 +315,6 @@ Body :: { BodySpan }
 
             Expression_(expid) :: { ExpressionSpan }
                 : ExpressionList_(expid)
-                                -- { let s l r = srcSpanSpan (l^.exp_annot) (r^.exp_annot)
-                                --   in foldl1 (\l r -> Apply l r (s l r)) $1 }
                                 { if length $1 == 1
                                     then $1^?!_head
                                     else Apply $1
@@ -338,7 +336,7 @@ Body :: { BodySpan }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' Expression_(expid)
                                 { pure $ Forall $2 $4
                                     (srcSpanSpan $1 ($4^.exp_annot)) }
-                | 'exists' TypeBind ';' Expression_(expid)
+                | 'exists' TypeBind '.' Expression_(expid)
                                 { pure $ Exists $2 $4
                                     (srcSpanSpan $1 $3) }
                 | 'select' TypeBind_(expid)
@@ -369,10 +367,10 @@ Body :: { BodySpan }
                 | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "forall")
                                     (srcSpanSpan $1 $3) }
-                | 'exists' {- empty -} ';'
+                | 'exists' {- empty -} '.'
                                 {% throwPError (PErrNoVariableIn "exists")
                                     (srcSpanSpan $1 $2) }
-                | 'exists' TypeBind ';' {- empty -}
+                | 'exists' TypeBind '.' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "exists")
                                         (srcSpanSpan $1 $3) }
                 | 'select' Expression_(expid)
@@ -437,7 +435,7 @@ getWhere mwhre e elns = case mwhre of
         Just (bdy, spn) -> Where e (Just bdy) (srcSpanSpan (e^.elns) spn)
         Nothing         -> Where e Nothing    (e^.elns)
 
-runParser :: String -> SrcLoc -> Either (Located Error) (ModuleSpan, [Located Warning])
-runParser input loc = evalLP input loc parseModule
+parseProgram :: String -> SrcLoc -> Either (Located Error) (ModuleSpan, [Located Warning])
+parseProgram input loc = evalLP input loc parseModule
 
 }

@@ -4,10 +4,7 @@ import           PrettyShow
 
 data Token
   -- identifiers
-  -- = TkTypeId            String
-  -- | TkFunctionId        String
   = TkIdentifier        { tkId :: String }
-  -- | TkImportPath        FilePath
   | TkQualified         { tkId :: String }
 
   -- comments
@@ -50,7 +47,6 @@ data Token
 
   -- reserved symbols
   | TkColon
-  | TkSemicolon
   | TkDot
   | TkArrow
   | TkBackslash
@@ -68,10 +64,7 @@ data Token
 
 instance Show Token where
         show tk = case tk of
-                -- TkTypeId     str   -> showId str
-                -- TkFunctionId str   -> showId str
                 TkIdentifier str   -> showId str
-                -- TkImportPath str   -> showId str
                 TkQualified  str   -> showId str
 
                 TkLineComment str  -> "--" ++ str
@@ -109,7 +102,6 @@ instance Show Token where
                 TkInfixN           -> "infixN"
 
                 TkColon            -> ":"
-                TkSemicolon        -> ";"
                 TkDot              -> "."
                 TkArrow            -> "->"
                 TkBackslash        -> "\\"

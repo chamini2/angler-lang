@@ -2,9 +2,9 @@ module Main where
 
 import           Language.Angler.AST
 import           Language.Angler.Error
-import           Language.Angler.Parser.Parser (runLexer, runParser)
+import           Language.Angler.Parser.Parser (lexProgram, parseProgram)
 import           Language.Angler.Monad
-import           Language.Angler.MixfixParser  ()
+import           Language.Angler.MixfixParser  (parseMixfix)
 import           Language.Angler.Options
 import           Language.Angler.SrcLoc
 import           Language.Angler.ScopedTable   hiding (empty)
@@ -64,11 +64,11 @@ readModule options filepath handle = do
 
         when (view opt_tokens options) $ do
                 putStr "\n\n***** lexer\n\n"
-                case runLexer input loc of
+                case lexProgram input loc of
                         Right (ts,_) -> mapM_ print ts
                         Left  _err   -> return ()
 
-        ast <- case runParser input loc of
+        ast <- case parseProgram input loc of
                 Right (ast,ws) -> mapM_ print ws >> return ast
                 Left  err      -> showError err
 
