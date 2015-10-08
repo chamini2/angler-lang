@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+
 module Language.Angler.AST where
 
 import           Language.Angler.SrcLoc
@@ -74,9 +75,9 @@ data BodyStmt a
         , _stm_annot    :: a
         }
   | OperatorDef
-        { _fixd_idn     :: Identifier a
-        , _fixd_fix     :: Fixity a
-        , _fixd_prec    :: Maybe Int
+        { _oper_idn     :: Identifier a
+        , _oper_fix     :: Fixity a
+        , _oper_prec    :: Maybe Int
         , _stm_annot    :: a
         }
   deriving Show

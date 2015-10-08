@@ -1,10 +1,10 @@
 module Language.Angler.Compact where
 
-import qualified Language.Angler.AST         as L               -- Loose
-import qualified Language.Angler.ASTCompact  as C               -- Compact
+import qualified Language.Angler.AST         as L       -- Loose
+import qualified Language.Angler.ASTCompact  as C       -- Compact
 import           Language.Angler.Error
 import           Language.Angler.SrcLoc
-import           Language.Angler.SymbolTable
+import           Language.Angler.ScopedTable
 
 import           Control.Lens
 import           Control.Monad.State         (State, runState)
