@@ -2,9 +2,11 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Language.Angler.Parser.Parser
-        ( parseModule ) where
+        ( runLexer
+        , runParser
+        ) where
 
-import           Language.Angler.Parser.Lexer (lexer, popContext)
+import           Language.Angler.Parser.Lexer (evalLP, lexer, popContext, runLexer)
 
 import           Language.Angler.AST
 import           Language.Angler.Error
@@ -434,5 +436,8 @@ getWhere :: Maybe (BodySpan, SrcSpan) -> f SrcSpan -> (Lens' (f SrcSpan) SrcSpan
 getWhere mwhre e elns = case mwhre of
         Just (bdy, spn) -> Where e (Just bdy) (srcSpanSpan (e^.elns) spn)
         Nothing         -> Where e Nothing    (e^.elns)
+
+runParser :: String -> SrcLoc -> Either (Located Error) (ModuleSpan, [Located Warning])
+runParser input loc = evalLP input loc parseModule
 
 }

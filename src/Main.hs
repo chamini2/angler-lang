@@ -1,5 +1,17 @@
 module Main where
 
+import           Language.Angler.AST
+import           Language.Angler.Error
+import           Language.Angler.Parser.Parser (runLexer, runParser)
+import           Language.Angler.Monad
+import           Language.Angler.MixfixParser  ()
+import           Language.Angler.Options
+import           Language.Angler.SrcLoc
+import           Language.Angler.ScopedTable   hiding (empty)
+import qualified Language.Angler.ScopedTable   as ST (empty)
+
+import           PrettyShow
+
 import           Control.Lens
 import           Control.Monad                 (forM, unless, when)
 
@@ -12,17 +24,6 @@ import           System.Environment            (getArgs)
 import           System.FilePath               ((</>), addExtension, pathSeparator)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
                                                 openFile, stdin)
-
-import           Language.Angler.AST
-import           Language.Angler.Error
-import           Language.Angler.Parser.Lexer  (evalLP, lexTokens)
-import           Language.Angler.Parser.Parser (parseModule)
-import           Language.Angler.Monad
-import           Language.Angler.MixfixParser  ()
-import           Language.Angler.Options
-import           Language.Angler.SrcLoc
-import           Language.Angler.ScopedTable   hiding (empty)
-import qualified Language.Angler.ScopedTable   as ST (empty)
 
 import           Prelude                       hiding (IOError, elem)
 import qualified Prelude                       as P (elem)
@@ -59,15 +60,15 @@ readModule options filepath handle = do
         putStrLn ("Checking module (" ++ filepath ++ ")")
 
         input <- hGetContents handle
-        let evalLP' = evalLP input (SrcLoc filepath 1 1)
+        let loc = startLoc filepath
 
         when (view opt_tokens options) $ do
                 putStr "\n\n***** lexer\n\n"
-                case evalLP' lexTokens of
+                case runLexer input loc of
                         Right (ts,_) -> mapM_ print ts
                         Left  _err   -> return ()
 
-        ast <- case evalLP' parseModule of
+        ast <- case runParser input loc of
                 Right (ast,ws) -> mapM_ print ws >> return ast
                 Left  err      -> showError err
 
@@ -85,6 +86,7 @@ readModule options filepath handle = do
                 (table, ast') <- readModule opts path handle'
 
                 let mfids = over (_Just.traverse) (view idn_str) mfs
+                -- let mfids = traverseOf _Just (view idn_str) mfs
                 let tableIm = filterByKey (checkIm mfids) table
 
                 let exportsErrors = filter (not . flip elem tableIm) (maybe [] toList mfids)

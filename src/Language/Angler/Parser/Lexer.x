@@ -10,7 +10,7 @@
 
 module Language.Angler.Parser.Lexer
         ( lexer
-        , lexTokens
+        , runLexer
 
         , runLP
         , execLP
@@ -346,6 +346,17 @@ execLP input loc = over _Right snd . runLP input loc
 evalLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, [Located Warning])
 evalLP input loc = over (_Right._2) (view lp_warnings) . runLP input loc
 
+runLexer :: String -> SrcLoc -> Either (Located Error) ([Located Token], [Located Warning])
+runLexer input loc = evalLP input loc lexTokens
+    where
+        lexTokens :: LP [Located Token]
+        lexTokens = do
+                tk  <- lexToken
+                tks <- case view loc_insd tk of
+                        TkEOF -> return []
+                        _     -> lexTokens
+                return (tk:tks)
+
 ----------------------------------------
 -- lexer handling
 
@@ -371,13 +382,5 @@ lexToken = do
                         (throwError . Loc (srcLocSpan l l) . LexError) (LErrUnexpectedCharacter c')
                 AlexSkip  inp' _len -> setInput inp' >> lexToken
                 AlexToken inp'@(l',_,_,_) len act -> setInput inp' >> act (srcLocSpan l l') b len
-
-lexTokens :: LP [Located Token]
-lexTokens = do
-        tk  <- lexToken
-        tks <- case view loc_insd tk of
-                TkEOF -> return []
-                _     -> lexTokens
-        return (tk:tks)
 
 }
