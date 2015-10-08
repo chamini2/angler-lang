@@ -78,6 +78,12 @@ readModule options filepath handle = do
                 putStr "\n\n***** parser\n\n"
                 putStrLn (prettyShow ast)
 
+        let (ast', errs) = parseMixfix ast
+        showErrorsUnlessNull errs
+
+        putStr "\n\n***** after Mixfix\n\n"
+        putStrLn (prettyShow ast')
+
         return (ST.empty, ast)
     {-where
         readImports :: Options -> ModuleSpan -> IO [(SymbolTableSpan, ModuleSpan)]

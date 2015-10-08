@@ -73,7 +73,7 @@ ops :: OperatorsPrecedence
 ops = map ($ empty)
         [ add  Pre            [strOp "if_then_else_"]
         , add (Infix ARight)  [strOp "_/\\_"]
-        , add (Infix ANon)    [strOp "_==_", strOp "_<_", strOp "_>_", strOp "_<=_", strOp "_>=_"]
+        , add (Infix ANon)    [strOp "_==_", strOp "_/=_"]
         , add (Infix ALeft)   [strOp "_+_", strOp "_-_"]
         , add  Post           [strOp "_!"]
         , add  Closed         [strOp "<_,_>"]

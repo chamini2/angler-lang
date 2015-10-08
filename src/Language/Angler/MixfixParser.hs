@@ -2,7 +2,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Language.Angler.MixfixParser where
+module Language.Angler.MixfixParser
+        ( parseMixfix ) where
 
 import           Language.Angler.AST
 import           Language.Angler.Error       hiding (ParseError)
@@ -16,8 +17,9 @@ import           PrettyShow
 import           Control.Applicative         (Alternative(..), (<|>), {-(<*>),
                                               (<*), (*>),-} liftA, many, {-some-})
 import           Control.Lens                hiding (op, below, parts)
-import           Control.Monad.State         (State, runState)
 import           Control.Monad               (forM_)
+import           Control.Monad.State         (State, runState)
+import           Control.Monad.Trans         (lift)
 
 import           Data.Default
 import           Data.Foldable               (toList)
@@ -30,13 +32,17 @@ import           Data.Sequence               (Seq, fromList)
 
 import           Text.Megaparsec             (ParsecT, choice, eof, runParserT,
                                               token, try)
-import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
-                                              setSourceLine, setSourceColumn)
-import           Text.Megaparsec.ShowToken   (ShowToken(..))
 import           Text.Megaparsec.Error       (ParseError, Message(..),
                                               errorMessages, errorPos)
+import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
+                                              setSourceLine, setSourceColumn)
+import           Text.Megaparsec.Prim        (getInput, setInput, getParserState,
+                                              setParserState)
+import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 import           Prelude                     hiding (lookup)
+
+import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Operator handling
@@ -128,8 +134,13 @@ scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
 
 type Mixfix = State OpPState
 
-runMixfix :: Mixfix SrcSpan -> (SrcSpan, OpPState)
+runMixfix :: Mixfix a -> (a, OpPState)
 runMixfix = flip runState def
+
+parseMixfix :: ModuleSpan -> (ModuleSpan, [ Located Error ])
+parseMixfix = over _2 (view opp_errs) . runMixfix . mixfixModule
+
+--------------------------------------------------------------------------------
 
 mixfixModule :: ModuleSpan -> Mixfix ModuleSpan
 mixfixModule = mapMOf mod_body mixfixBody
@@ -165,17 +176,35 @@ mixfixWhere whre = do
         mapMOf whre_insd mixfixExpression whre'
 
 mixfixExpression :: ExpressionSpan -> Mixfix ExpressionSpan
-mixfixExpression expr = parseExpression expr >>= either leftPError return
-    where
-        leftPError :: ParseError -> Mixfix ExpressionSpan
-        leftPError perr = do
-                let msgs = errorMessages perr
-                    pos  = errorPos perr
-                    loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
-                    spn  = srcLocSpan loc loc
-                forM_ msgs (pushM opp_errs . Loc spn . CheckError . CErr . show)
-                return expr
+mixfixExpression expr = do
+        eit <- case expr of
+                Apply xs _ -> parse (views exp_annot srcSpanFile expr) (toList xs)
+                _          -> return (Right expr)
 
+        case eit of
+                Left perr -> do
+                        let msgs = errorMessages perr
+                            pos  = errorPos perr
+                            loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
+                            spn  = srcLocSpan loc loc
+                        forM_ msgs (pushM opp_errs . Loc spn . CheckError . CErr . show)
+                        return expr
+                Right x -> return x
+
+-- mixfixExpression :: ExpressionSpan -> Mixfix ExpressionSpan
+-- mixfixExpression expr = parseExpression expr >>= either leftPError return
+--     where
+--         leftPError :: ParseError -> Mixfix ExpressionSpan
+--         leftPError perr = do
+--                 let msgs = errorMessages perr
+--                     pos  = errorPos perr
+--                     loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
+--                     spn  = srcLocSpan loc loc
+--                 forM_ msgs (pushM opp_errs . Loc spn . CheckError . CErr . show)
+--                 return expr
+
+parse :: FilePath -> [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
+parse filepath = runOpP generateOpP filepath
 
 mixfixTypeBind :: TypeBindSpan -> Mixfix TypeBindSpan
 mixfixTypeBind = return
@@ -191,37 +220,6 @@ mixfixImplicit = return
 
 type ExprSpan = ExpressionSpan
 type OpP = ParsecT [ExprSpan] Mixfix
-
-parseExpression :: ExprSpan -> Mixfix (Either ParseError ExprSpan)
-parseExpression expr = case expr of
-        Var _ _ -> return (Right expr)
-        Lit _ _ -> return (Right expr)
-        Apply xs _ -> mapM mixfixExpression xs >>= parse . toList
-        Lambda arg x ann -> do
-                arg' <- mixfixArgument arg
-                x' <- mixfixExpression x
-                return (Right (Lambda arg' x' ann))
-        Let body x ann -> do
-                body' <- mixfixBody body
-                x' <- mixfixExpression x
-                return (Right (Let body' x' ann))
-        Forall typs x ann -> do
-                typs' <- mapM mixfixTypeBind typs
-                x' <- mixfixExpression x
-                return (Right (Forall typs' x' ann))
-        Exists typ x ann -> do
-                typ' <- mixfixTypeBind typ
-                x' <- mixfixExpression x
-                return (Right (Exists typ' x' ann))
-        Select typ ann -> do
-                typ' <- mixfixTypeBind typ
-                return (Right (Select typ' ann))
-        ImplicitExpr imps ann -> do
-                imps' <- mapM mixfixImplicit imps
-                return (Right (ImplicitExpr imps' ann))
-    where
-        parse :: [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
-        parse = runOpP generateOpP (views exp_annot srcSpanFile expr)
 
 runOpP :: OpP a -> FilePath -> [ExprSpan] -> Mixfix (Either ParseError a)
 runOpP = runParserT
@@ -282,9 +280,8 @@ generateOpP = topOpP <* eof
 
         bottomOpP :: OpP ExprSpan
         bottomOpP = do
-                xs <- liftA fromList cleverTokens
-                let xsSpan = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
-                return (Apply xs xsSpan)
+                xs <- liftA fromList (some basicToken)
+                return (Apply xs (xsSpan xs))
             where
                 -- This tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
@@ -301,7 +298,7 @@ generateOpP = topOpP <* eof
                 basicToken = try obviousToken <|> closedOpOpP
                     where
                         obviousToken :: OpP ExprSpan
-                        obviousToken = precTable >>= satisfy . testExpr
+                        obviousToken = precTable >>= satisfy . testExpr >>= retake
                             where
                                 testExpr :: PrecedenceTable -> ExprSpan -> Bool
                                 testExpr prec x = case x of
@@ -309,6 +306,21 @@ generateOpP = topOpP <* eof
                                         _          -> True
                                 parts :: PrecedenceTable -> [String]
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)
+                                retake :: ExprSpan -> OpP ExprSpan
+                                retake x = case x of
+                                        Var _ _ -> return x
+                                        Lit _ _ -> return x
+                                        Apply xs _ -> do
+                                                input <- getInput
+                                                setInput (toList xs)
+                                                x' <- generateOpP
+                                                setInput input
+                                                return x'
+                                        Lambda arg x an -> do
+                                                arg' <- lift (mixfixArgument arg)
+                                                x'   <- lift (mixfixExpression x)
+                                                return (Lambda arg' x' an)
+                                        _ -> return x
 
                 closedOpOpP :: OpP ExprSpan
                 closedOpOpP = precTable >>= choice . fmap (try . closedOpP) . closedOps
@@ -333,7 +345,7 @@ generateOpP = topOpP <* eof
                         clean = dropWhile isNothing
 
                 middleOpP :: OpP ExprSpan
-                middleOpP = choice . flip map (nonOps lvl) $ \op -> do
+                middleOpP = choice . flip map (nonOps lvl) $ \op -> try $ do
                         leftH     <- belowOpP
                         (clxs, _) <- closedPartOpP (closedPart op)
                         rightH    <- belowOpP
@@ -345,7 +357,7 @@ generateOpP = topOpP <* eof
                         nonOps = searchOps (Infix NonAssoc ())
 
                 nonInfixOpP :: Fixity () -> OpP (Seq ExprSpan, SrcSpan)
-                nonInfixOpP fix = choice . flip map (searchOps fix lvl) $ \op -> do
+                nonInfixOpP fix = choice . flip map (searchOps fix lvl) $ \op -> try $ do
                         (clxs, sp) <- closedPartOpP (closedPart op)
                         return (Var (opStr op) sp <| clxs, sp)
 
@@ -362,7 +374,7 @@ generateOpP = topOpP <* eof
                         prefixOpP = nonInfixOpP (Prefix ())
 
                         rightAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        rightAssocOpP = choice . flip map (rightOps lvl) $ \op -> do
+                        rightAssocOpP = choice . flip map (rightOps lvl) $ \op -> try $ do
                                 leftH        <- belowOpP
                                 (clxs, clsp) <- closedPartOpP (closedPart op)
                                 let sp = srcSpanSpan (leftH^.exp_annot) clsp
@@ -408,8 +420,9 @@ generateOpP = topOpP <* eof
                 prtOpP mprt = case mprt of
                         Just prt -> pure empty <* var prt
                         _        -> pure <$> topOpP
-                xsSpan :: (Alternative f,
-                           Cons (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan,
-                           Snoc (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan)
-                       => f ExprSpan -> SrcSpan
-                xsSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
+
+        xsSpan :: (Alternative f,
+                   Cons (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan,
+                   Snoc (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan)
+               => f ExprSpan -> SrcSpan
+        xsSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)

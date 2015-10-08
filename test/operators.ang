@@ -1,0 +1,25 @@
+operator if_then_else_      prefix  0
+operator _==_               infixN  3
+operator _/=_               infixN  3
+operator _+_                infixL  4
+operator _-_                infixL  4
+operator _*_                infixL  5
+operator _/_                infixL  5
+operator _^_                infixR  6
+operator -_                 prefix  7
+operator _!                 postfix 8
+operator <_>                closed
+
+x = < a >
+
+x = if a b c == (d e /= f l) then g + h - i * j! - -k else -m!
+-- x = (if_then_else_
+--         (_==_ (a b c)
+--               ((_/=_ (d e) (f l))))
+--         (_-_  (_-_ (_+_ (g) (h))
+--                        (_*_ (i)
+--                             (_! (j))))
+--               (-_ (k)))
+--         (-_   (_! (m))))
+x = if (\a -> (a d e == f g)) then b else c
+x = if a d e /= f g then b else c
