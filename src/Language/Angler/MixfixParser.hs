@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.Angler.MixfixParser where
@@ -24,7 +25,8 @@ import           Data.Function               (on)
 import           Data.List                   (sortBy)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict             as Map (empty, insertWith, lookup, singleton)
-import           Data.Sequence               (fromList)
+import           Data.Maybe                  (isNothing)
+import           Data.Sequence               (Seq, fromList)
 
 import           Text.Megaparsec             (ParsecT, choice, eof, runParserT,
                                               token, try)
@@ -261,6 +263,9 @@ var str = satisfy testExpr
                 Var name _ -> name == str
                 _          -> False
 
+searchOps :: Fixity () -> PrecedenceLevel -> [ OperatorParts ]
+searchOps fix = maybe [] id . Map.lookup fix
+
 generateOpP :: OpP ExprSpan
 generateOpP = topOpP <* eof
     where
@@ -268,7 +273,7 @@ generateOpP = topOpP <* eof
         precTable = uses opp_table scopedTabPrecedenceTab
 
         topOpP :: OpP ExprSpan
-        topOpP = precTable >>= choice . foldr go [bottomOpP] . fmap pOpP
+        topOpP = precTable >>= choice . foldr go [bottomOpP] . fmap levelOpP
             where
                 -- We pass all the parsers below as *fallback*
                 -- if we couldn't get a match on this level
@@ -306,21 +311,96 @@ generateOpP = topOpP <* eof
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)
 
                 closedOpOpP :: OpP ExprSpan
-                closedOpOpP = precTable >>= choice . fmap (try . opOpP) . closedOps
+                closedOpOpP = precTable >>= choice . fmap (try . closedOpP) . closedOps
                     where
-                        opOpP :: OperatorParts -> OpP ExprSpan
-                        opOpP op = do
-                                clxs <- closedPartOpP op
-                                let clsp = srcSpanSpan (clxs^?!_head.exp_annot) (clxs^?!_last.exp_annot)
-                                return (Apply (Var (opStr op) clsp <| clxs) clsp)
+                        closedOpP :: OperatorParts -> OpP ExprSpan
+                        closedOpP op = do
+                                (clxs, sp) <- closedPartOpP op
+                                let xs = Var (opStr op) sp <| clxs
+                                return (Apply xs sp)
                         closedOps :: PrecedenceTable -> [ OperatorParts ]
-                        closedOps = concatMap (maybe [] id . Map.lookup (Closedfix ()))
+                        closedOps = concatMap (searchOps (Closedfix ()))
 
-        pOpP :: PrecedenceLevel -> [OpP ExprSpan] -> OpP ExprSpan
-        pOpP _lvl below = choice below
+        levelOpP :: PrecedenceLevel -> [OpP ExprSpan] -> OpP ExprSpan
+        levelOpP lvl below = try middleOpP <|> try rightOpP <|> leftOpP
+            where
+                belowOpP :: OpP ExprSpan
+                belowOpP = choice below
 
-        closedPartOpP :: Alternative f => OperatorParts -> OpP (f ExprSpan)
-        closedPartOpP = foldr go (pure empty)
+                closedPart :: OperatorParts -> OperatorParts
+                closedPart = reverse . clean . reverse . clean
+                    where
+                        clean = dropWhile isNothing
+
+                middleOpP :: OpP ExprSpan
+                middleOpP = choice . flip map (nonOps lvl) $ \op -> do
+                        leftH     <- belowOpP
+                        (clxs, _) <- closedPartOpP (closedPart op)
+                        rightH    <- belowOpP
+                        let sp = srcSpanSpan (leftH^.exp_annot) (rightH^.exp_annot)
+                            xs = Var (opStr op) sp <| pure leftH <|> clxs |> rightH
+                        return (Apply xs sp)
+                    where
+                        nonOps :: PrecedenceLevel -> [ OperatorParts ]
+                        nonOps = searchOps (Infix NonAssoc ())
+
+                nonInfixOpP :: Fixity () -> OpP (Seq ExprSpan, SrcSpan)
+                nonInfixOpP fix = choice . flip map (searchOps fix lvl) $ \op -> do
+                        (clxs, sp) <- closedPartOpP (closedPart op)
+                        return (Var (opStr op) sp <| clxs, sp)
+
+                rightOpP :: OpP ExprSpan
+                rightOpP = do
+                        xs <- some (try prefixOpP <|> rightAssocOpP)
+                        x  <- belowOpP
+                        return (foldr go x xs)
+                    where
+                        go :: (Seq ExprSpan, SrcSpan) -> ExprSpan -> ExprSpan
+                        go (xs, sp) x = Apply (xs |> x) (srcSpanSpan sp (x^.exp_annot))
+
+                        prefixOpP :: OpP (Seq ExprSpan, SrcSpan)
+                        prefixOpP = nonInfixOpP (Prefix ())
+
+                        rightAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
+                        rightAssocOpP = choice . flip map (rightOps lvl) $ \op -> do
+                                leftH        <- belowOpP
+                                (clxs, clsp) <- closedPartOpP (closedPart op)
+                                let sp = srcSpanSpan (leftH^.exp_annot) clsp
+                                return (Var (opStr op) sp <| pure leftH <|> clxs, sp)
+                            where
+                                rightOps :: PrecedenceLevel -> [ OperatorParts ]
+                                rightOps = searchOps (Infix RightAssoc ())
+
+                leftOpP :: OpP ExprSpan
+                leftOpP = do
+                        x  <- belowOpP
+                        xs <- many (try postfixOpP <|> leftAssocOpP)
+                        return (foldl go x xs)
+                    where
+                        go :: ExprSpan -> (Seq ExprSpan, SrcSpan) -> ExprSpan
+                        go x (xsS, sp) = Apply (fromList xs) sp
+                            where
+                                xs  = head xs' : x : tail xs'
+                                xs' = toList xsS
+
+                        postfixOpP :: OpP (Seq ExprSpan, SrcSpan)
+                        postfixOpP = nonInfixOpP (Postfix ())
+
+                        leftAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
+                        leftAssocOpP = choice . flip map (leftOps lvl) $ \op -> do
+                                (clxs, clsp) <- closedPartOpP (closedPart op)
+                                rightH       <- belowOpP
+                                let sp = srcSpanSpan clsp (rightH^.exp_annot)
+                                return (Var (opStr op) sp <| (clxs |> rightH), sp)
+                            where
+                                leftOps :: PrecedenceLevel -> [ OperatorParts ]
+                                leftOps = searchOps (Infix LeftAssoc ())
+
+        closedPartOpP :: (Alternative f,
+                          Cons (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan,
+                          Snoc (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan)
+                      => OperatorParts -> OpP (f ExprSpan, SrcSpan)
+        closedPartOpP prts = foldr go (pure empty) prts >>= \xs -> return (xs, xsSpan xs)
             where
                 go :: Alternative f => OperatorPart -> OpP (f ExprSpan) -> OpP (f ExprSpan)
                 go mprt act = (<|>) <$> prtOpP mprt <*> act
@@ -328,3 +408,8 @@ generateOpP = topOpP <* eof
                 prtOpP mprt = case mprt of
                         Just prt -> pure empty <* var prt
                         _        -> pure <$> topOpP
+                xsSpan :: (Alternative f,
+                           Cons (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan,
+                           Snoc (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan)
+                       => f ExprSpan -> SrcSpan
+                xsSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
