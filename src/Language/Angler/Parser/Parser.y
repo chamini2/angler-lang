@@ -333,10 +333,10 @@ Body :: { BodySpan }
                                   in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
                 | 'let' '{^' Body CloseBrace 'in' Expression_(expid)
                                 { pure $ Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
-                | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' Expression_(expid)
+                | 'forall' ListSep1(TypeBind_(QuantifierId), ',') '.' Expression_(expid)
                                 { pure $ Forall $2 $4
                                     (srcSpanSpan $1 ($4^.exp_annot)) }
-                | 'exists' TypeBind '.' Expression_(expid)
+                | 'exists' TypeBind_(QuantifierId) '.' Expression_(expid)
                                 { pure $ Exists $2 $4
                                     (srcSpanSpan $1 $3) }
                 | 'select' TypeBind_(expid)
@@ -364,13 +364,13 @@ Body :: { BodySpan }
                 | 'forall' {- empty -} '.'
                                 {% throwPError (PErrNoVariablesIn "forall")
                                     (srcSpanSpan $1 $2) }
-                | 'forall' ListSep1(TypeBind_(ForallId), ',') '.' {- empty -}
+                | 'forall' ListSep1(TypeBind_(QuantifierId), ',') '.' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "forall")
                                     (srcSpanSpan $1 $3) }
                 | 'exists' {- empty -} '.'
                                 {% throwPError (PErrNoVariableIn "exists")
                                     (srcSpanSpan $1 $2) }
-                | 'exists' TypeBind '.' {- empty -}
+                | 'exists' TypeBind_(QuantifierId) '.' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "exists")
                                         (srcSpanSpan $1 $3) }
                 | 'select' Expression_(expid)
@@ -382,7 +382,7 @@ Body :: { BodySpan }
                     | DotId         { $1 }
                     | EqualsId      { $1 }
 
-                ForallId :: { IdentifierSpan }
+                QuantifierId :: { IdentifierSpan }
                     : QId           { $1 }
                     | ArrowId       { $1 }
                     | EqualsId      { $1 }

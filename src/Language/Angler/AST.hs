@@ -291,7 +291,7 @@ instance PrettyShow (BodyStmt a) where
                         pshows (string " ") args
                         string " = " >> pshow expr
                 OperatorDef idn fx mint _ -> do
-                        string "fixity " >> lstring idn_str idn >> string " "
+                        string "operator " >> lstring idn_str idn >> string " "
                         pshow fx
                         when (isJust mint) $ do
                                 let Just int = mint
@@ -329,7 +329,7 @@ instance PrettyShow (Expression a) where
                         lower
                 Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
                                                         >> pshow expr'
-                Exists typ expr' _  -> string "exists " >> pshow typ >> string ";"
+                Exists typ expr' _  -> string "exists " >> pshow typ >> string " ; "
                                                         >> pshow expr'
                 Select typ _        -> string "select " >> pshow typ
                 ImplicitExpr imps _ -> string "{" >> pshows' " " imps >> string "}"
