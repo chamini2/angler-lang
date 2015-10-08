@@ -22,4 +22,4 @@ x = if a b c == (d e /= f l) then g + h - i * j! - -k else -m!
 --               (-_ (k)))
 --         (-_   (_! (m))))
 x = if (\a -> (a d e == f g)) then b else c
-x = if a d e /= f g then b else c
+x = if a ^ d ^ e /= f g then b else c
