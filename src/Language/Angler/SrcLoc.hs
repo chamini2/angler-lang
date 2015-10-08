@@ -80,11 +80,11 @@ srcSpanELoc span = case span of
 srcLocSpan :: SrcLoc -> SrcLoc -> SrcSpan
 srcLocSpan (SrcLoc f1 l1 c1) (SrcLoc f2 l2 c2) = if f1 == f2
         then case (compare l1 l2, compare c1 c2) of
-                (EQ, EQ) -> SrcSpanPoint f l1 c1
-                (EQ, LT) -> SrcSpanOneLine f l1 c1 c2
-                (EQ, GT) -> SrcSpanOneLine f l1 c2 c1
-                (LT, _ ) -> SrcSpanMultiline f l1 c1 l2 c2
-                (GT, _ ) -> SrcSpanMultiline f l2 c2 l1 c1
+                (EQ, EQ) -> SrcSpanPoint     f1 l1 c1
+                (EQ, LT) -> SrcSpanOneLine   f1 l1 c1 c2
+                (EQ, GT) -> SrcSpanOneLine   f1 l1 c2 c1
+                (LT, _ ) -> SrcSpanMultiline f1 l1 c1 l2 c2
+                (GT, _ ) -> SrcSpanMultiline f1 l2 c2 l1 c1
         else error "SrcLoc.srcLocSpan: different files for SrcSpan"
 
 
