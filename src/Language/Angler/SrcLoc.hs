@@ -78,13 +78,14 @@ srcSpanELoc span = case span of
         SrcSpanMultiline f _sl _sc el ec -> SrcLoc f el ec
 
 srcLocSpan :: SrcLoc -> SrcLoc -> SrcSpan
-srcLocSpan (SrcLoc f l1 c1) (SrcLoc f' l2 c2) = case (compare f f', compare l1 l2, compare c1 c2) of
-        (EQ, EQ, EQ) -> SrcSpanPoint f l1 c1
-        (EQ, EQ, LT) -> SrcSpanOneLine f l1 c1 c2
-        (EQ, EQ, GT) -> SrcSpanOneLine f l1 c2 c1
-        (EQ, LT, _ ) -> SrcSpanMultiline f l1 c1 l2 c2
-        (EQ, GT, _ ) -> SrcSpanMultiline f l2 c2 l1 c1
-        (_ , _ , _ ) -> error "SrcLoc.srcLocSpan: different files for SrcSpan"
+srcLocSpan (SrcLoc f1 l1 c1) (SrcLoc f2 l2 c2) = if f1 == f2
+        then case (compare l1 l2, compare c1 c2) of
+                (EQ, EQ) -> SrcSpanPoint f l1 c1
+                (EQ, LT) -> SrcSpanOneLine f l1 c1 c2
+                (EQ, GT) -> SrcSpanOneLine f l1 c2 c1
+                (LT, _ ) -> SrcSpanMultiline f l1 c1 l2 c2
+                (GT, _ ) -> SrcSpanMultiline f l2 c2 l1 c1
+        else error "SrcLoc.srcLocSpan: different files for SrcSpan"
 
 
 srcSpanFile :: SrcSpan -> FilePath

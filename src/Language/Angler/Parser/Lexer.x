@@ -50,7 +50,7 @@ $white_no_nl  = $whitechar # \n
 
 $digit        = 0 - 9
 $hexdigit     = [ $digit a - f A - F ]
-$symbol       = [ \- \! \# \$ \% \& \* \+ \/ \\ \< \= \> \^ \| \~ \? \` \[ \] \: \. ]
+$symbol       = [ \- \! \@ \# \$ \% \& \* \+ \/ \\ \< \= \> \^ \| \~ \? \` \[ \] \: \. ]
 $small        = a - z
 $large        = A - Z
 $alpha        = [ $small $large ]
@@ -261,10 +261,10 @@ tokenStore fnTk span buf len = let tk = fnTk (take len buf)
                                in return (Loc span tk)
 
 push :: Int -> Action
-push ls _span _buf _len = pushLP lp_lex_state ls >> lexToken
+push ls _span _buf _len = pushM lp_lex_state ls >> lexToken
 
 pop :: Action
-pop _span _buf _len = popLP lp_lex_state >> lexToken
+pop _span _buf _len = popM lp_lex_state >> lexToken
 
 -- from GHC's lexer
 identifier :: (String -> Token) -> Action
@@ -278,14 +278,14 @@ identifier idTk span buf len = case Map.lookup str reserved of
         -- add an opening curly brace.
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
-                TkWhere -> pushLP lp_lex_state layout   -- for .. where ..
-                TkWith  -> pushLP lp_lex_state layout   -- for type constructors
-                TkLet   -> pushLP lp_lex_state layout   -- for let .. in ..
+                TkWhere -> pushM lp_lex_state layout   -- for .. where ..
+                TkWith  -> pushM lp_lex_state layout   -- for type constructors
+                TkLet   -> pushM lp_lex_state layout   -- for let .. in ..
                 _       -> return ()
 
 newLayoutContext :: Token -> Action
 newLayoutContext tk span _buf len = do
-        popLP lp_lex_state
+        popM lp_lex_state
         (l,_,_,_) <- getInput
         let offset = srcLocCol l - len
         ctx <- use lp_context
@@ -294,16 +294,16 @@ newLayoutContext tk span _buf len = do
                     | prev_off >= offset ->
                         -- token is indented to the left of the previous context.
                         -- we must generate a {} sequence now.
-                        pushLP lp_lex_state empty_layout >> return (Loc span tk)
-                _ -> pushLP lp_context (Layout offset) >> return (Loc span tk)
+                        pushM lp_lex_state empty_layout >> return (Loc span tk)
+                _ -> pushM lp_context (Layout offset) >> return (Loc span tk)
 
 popContext :: LP ()
-popContext = popLP lp_context
+popContext = popM lp_context
 
 emptyLayout :: Action
 emptyLayout span _buf _len = do
-        popLP lp_lex_state
-        pushLP lp_lex_state bol
+        popM lp_lex_state
+        pushM lp_lex_state bol
         return (Loc span TkVRCurly)
 
 processLayout :: Action
@@ -312,11 +312,11 @@ processLayout span _buf _len = do
         case pos of
                 -- not popping the lexState, we might have a ';' or another '}' to insert
                 -- inserting '}'
-                LT -> popLP lp_context >> return (Loc span TkVRCurly)
+                LT -> popM lp_context >> return (Loc span TkVRCurly)
                 -- inserting ';'
-                EQ -> popLP lp_lex_state >> return (Loc span TkVSemicolon)
+                EQ -> popM lp_lex_state >> return (Loc span TkVSemicolon)
                 -- keep lexing as if in the same line
-                GT -> popLP lp_lex_state >> lexToken
+                GT -> popM lp_lex_state >> lexToken
 
 --------------------------------------------------------------------------------
 -- exposed functions
@@ -355,17 +355,17 @@ lexer = (>>=) lexToken
 lexToken :: LP (Located Token)
 lexToken = do
         inp@(l,_c,_bs,b) <- getInput
-        ls <- peekLP lp_lex_state
+        ls <- peekM lp_lex_state
         case alexScan inp ls of
                 AlexEOF -> do
-                    ls' <- peekLP lp_lex_state
+                    ls' <- peekM lp_lex_state
                     if ls' == comment
                         then (throwError . Loc (srcLocSpan l l) . LexError) LErrUnterminatedComment
                         else do
                         ctx <- use lp_context
                         if not (null ctx)
                             -- closing all the open layouts we had
-                            then popLP lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
+                            then popM lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
                             else return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
                         (throwError . Loc (srcLocSpan l l) . LexError) (LErrUnexpectedCharacter c')

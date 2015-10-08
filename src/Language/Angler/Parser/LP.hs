@@ -10,10 +10,6 @@ module Language.Angler.Parser.LP
         , lp_warnings
         , Byte
 
-        , throwError
-        , pushLP, popLP, peekLP
-        -- , pushLexState, peekLexState, popLexState
-        -- , pushContext, popContext
         , getOffside
         ) where
 
@@ -22,10 +18,9 @@ import           Language.Angler.Monad
 import           Language.Angler.SrcLoc
 
 import           Control.Lens
-import           Control.Monad.Except   (ExceptT(..), throwError)
+import           Control.Monad.Except   (ExceptT(..))
 import           Control.Monad.State    (StateT(..))
 import           Data.Default           (Default(..))
-import           Data.Maybe             (fromJust)
 import           Data.Word              (Word8)
 
 import           Prelude                hiding (span)
@@ -79,15 +74,6 @@ instance Default LPState where
 
 ----------------------------------------
 -- LPState's manipulation
-
-pushLP :: Lens' LPState [a] -> a -> LP ()
-pushLP lns x = lns %= cons x
-
-peekLP :: Lens' LPState [a] -> LP a
-peekLP lns = preuse (lns._head) >>= return . fromJust
-
-popLP :: Lens' LPState [a] -> LP ()
-popLP lns = use (lns._tail) >>= assign lns
 
 getOffside :: SrcSpan -> LP Ordering
 getOffside span = do

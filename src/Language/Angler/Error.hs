@@ -10,7 +10,7 @@ data Warning
 data Error
   = LexError    LexError
   | ParseError  ParseError
-  | CheckError CheckError
+  | CheckError  CheckError
   | IOError     IOError
   | Err         String
   deriving Show

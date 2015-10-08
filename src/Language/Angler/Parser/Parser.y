@@ -8,6 +8,7 @@ import           Language.Angler.Parser.Lexer (lexer, popContext)
 
 import           Language.Angler.AST
 import           Language.Angler.Error
+import           Language.Angler.Monad
 import           Language.Angler.Parser.LP
 import           Language.Angler.Parser.Token
 import           Language.Angler.SrcLoc
