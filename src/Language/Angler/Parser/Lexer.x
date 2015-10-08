@@ -69,20 +69,20 @@ $escape_chars = [ a b f n r t v \\ \' \" ]                              -- "
 
 -- identifiers
 @opalpha      = $alpha [ $alpha $digit \' ]*
-@idalpha      = ((\_)? @opalpha)+ (\_)?
 
 @opsymbol     = $symbol [ $symbol \' ]*
-@idsymbol     = ((\_)? @opsymbol)+ (\_)?
 
+-- without '_'
 @op           = @opalpha | @opsymbol
 
-                -- with '_'            | without '_'
-@ident        = (\_)? (@op \_)+ (@op)? | @op
--- @ident        = @idalpha | @idsymbol
+-- with '_'
+@closed       = (@op \_)* @op
+@fixed        = (\_)? (@op \_)* @op (\_)?
+
+@ident        = @fixed | @op
 
 -- for modules (paths)
-@path         = (@idalpha \.)*
--- @imprt        = @path @idalpha
+@path         = (@opalpha \.)*
 @qualf        = @path @ident
 --------------------------------------------------------------------------------
 
