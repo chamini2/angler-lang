@@ -32,6 +32,7 @@ import qualified Prelude                    as P (elem)
 newtype ScopedTable sym
   = ScopedTable
         { _tab_stack    :: [ Map String sym ] }
+  deriving Show
 
 makeLenses ''ScopedTable
 

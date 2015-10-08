@@ -6,19 +6,24 @@ module Language.Angler.MixfixParser where
 import           Language.Angler.AST
 import           Language.Angler.Error       hiding (ParseError)
 import           Language.Angler.Monad
-import           Language.Angler.ScopedTable hiding (empty)
-import qualified Language.Angler.ScopedTable as ST (empty)
+import           Language.Angler.ScopedTable hiding (empty, toList)
+import qualified Language.Angler.ScopedTable as ST
 import           Language.Angler.SrcLoc
 
-import           Control.Applicative         (Alternative(..), (<|>), {-(<*>), (<*), (*>),-} liftA, many, {-some-})
+import           PrettyShow
+
+import           Control.Applicative         (Alternative(..), (<|>), {-(<*>),
+                                              (<*), (*>),-} liftA, many, {-some-})
 import           Control.Lens                hiding (op, below, parts)
 import           Control.Monad.State         (State, runState)
 import           Control.Monad               (forM_)
 
 import           Data.Default
 import           Data.Foldable               (toList)
+import           Data.Function               (on)
+import           Data.List                   (sortBy)
 import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as Map (lookup)
+import qualified Data.Map.Strict             as Map (empty, insertWith, lookup, singleton)
 import           Data.Sequence               (fromList)
 
 import           Text.Megaparsec             (ParsecT, choice, eof, runParserT,
@@ -57,10 +62,17 @@ strOp = foldr go []
 data Operator
   = Operator
         { _op_idn       :: String
-        -- , _op_repr      :: OperatorParts
         , _op_fix       :: Fixity ()
         , _op_prec      :: Maybe Int
         }
+  deriving Show
+
+-- Lens for accessing OperatorParts as if it was a field of Operator
+op_repr :: Lens' Operator OperatorParts
+op_repr op_fn (Operator idn fix prec) = wrap <$> op_fn (strOp idn)
+    where
+        wrap :: OperatorParts -> Operator
+        wrap prts = Operator (opStr prts) fix prec
 
 data OpPState
   = OpPState
@@ -81,7 +93,33 @@ instance Default OpPState where
                 }
 
 scopedTabPrecedenceTab :: ScopedTable Operator -> PrecedenceTable
-scopedTabPrecedenceTab = undefined
+scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
+    where
+        sort :: [Operator] -> [Operator]
+        sort = sortBy (compare `on` view op_prec)
+
+        buildTable :: [Operator] -> PrecedenceTable
+        buildTable = fst . foldr go ([Map.empty], Nothing)
+
+        go :: Operator -> (PrecedenceTable, Maybe Int) -> (PrecedenceTable, Maybe Int)
+        go op (tab, mprec) = (go' tab, opPrec)
+            where
+                opPrec :: Maybe Int
+                opPrec = view op_prec op
+
+                go' :: PrecedenceTable -> PrecedenceTable
+                go' = if opPrec < mprec
+                        then cons newLvl
+                        else over _head addOp
+
+                newLvl :: PrecedenceLevel
+                newLvl = uncurry Map.singleton opInfo
+
+                addOp :: PrecedenceLevel -> PrecedenceLevel
+                addOp = uncurry (Map.insertWith (++)) opInfo
+
+                opInfo :: (Fixity (), [OperatorParts])
+                opInfo = (view op_fix op, [view op_repr op])
 
 --------------------------------------------------------------------------------
 -- Monad
