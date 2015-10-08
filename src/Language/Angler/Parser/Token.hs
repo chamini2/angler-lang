@@ -1,5 +1,7 @@
 module Language.Angler.Parser.Token where
 
+import           PrettyShow
+
 data Token
   -- identifiers
   -- = TkTypeId            String
@@ -65,61 +67,68 @@ data Token
   | TkEOF
 
 instance Show Token where
-  show tk = case tk of
-        -- TkTypeId     str   -> showId str
-        -- TkFunctionId str   -> showId str
-        TkIdentifier str   -> showId str
-        -- TkImportPath str   -> showId str
-        TkQualified  str   -> showId str
+        show tk = case tk of
+                -- TkTypeId     str   -> showId str
+                -- TkFunctionId str   -> showId str
+                TkIdentifier str   -> showId str
+                -- TkImportPath str   -> showId str
+                TkQualified  str   -> showId str
 
-        TkLineComment str  -> "--" ++ str
-        TkBlockComment str -> "{-" ++ str ++ "-}"
+                TkLineComment str  -> "--" ++ str
+                TkBlockComment str -> "{-" ++ str ++ "-}"
 
-        TkInteger int      -> show int
-        TkChar    chr      -> show chr
-        TkString  str      -> show str
+                TkInteger int      -> show int
+                TkChar    chr      -> show chr
+                TkString  str      -> show str
 
-        TkVLCurly          -> "{^\n"
-        TkVRCurly          -> "\n^}"
-        TkVSemicolon       -> "^;\n"
+                TkVLCurly          -> "{^"
+                TkVRCurly          -> "^}"
+                TkVSemicolon       -> "^;"
 
-        TkExport           -> "export"
-        TkImport           -> "import"
-        TkAs               -> "as"
-        TkOpen             -> "open"
-        TkReopen           -> "reopen"
-        TkClosed           -> "closed"
-        TkWith             -> "with"
-        TkLet              -> "let"
-        TkIn               -> "in"
-        TkWhere            -> "where"
-        TkForall           -> "forall"
-        TkExists           -> "exists"
-        TkSelect           -> "select"
-        -- TkBehaviour        -> "behaviour"
-        -- TkOn               -> "on"
-        -- TkIs               -> "is"
-        TkOperator         -> "operator"
-        TkPrefix           -> "prefix"
-        TkPostfix          -> "postfix"
-        TkInfixL           -> "infixL"
-        TkInfixR           -> "infixR"
-        TkInfixN           -> "infixN"
+                TkExport           -> "export"
+                TkImport           -> "import"
+                TkAs               -> "as"
+                TkOpen             -> "open"
+                TkReopen           -> "reopen"
+                TkClosed           -> "closed"
+                TkWith             -> "with"
+                TkLet              -> "let"
+                TkIn               -> "in"
+                TkWhere            -> "where"
+                TkForall           -> "forall"
+                TkExists           -> "exists"
+                TkSelect           -> "select"
+                -- TkBehaviour        -> "behaviour"
+                -- TkOn               -> "on"
+                -- TkIs               -> "is"
+                TkOperator         -> "operator"
+                TkPrefix           -> "prefix"
+                TkPostfix          -> "postfix"
+                TkInfixL           -> "infixL"
+                TkInfixR           -> "infixR"
+                TkInfixN           -> "infixN"
 
-        TkColon            -> ":"
-        TkSemicolon        -> ";"
-        TkDot              -> "."
-        TkArrow            -> "->"
-        TkBackslash        -> "\\"
-        TkEquals           -> "="
-        TkComma            -> ","
-        -- TkAt               -> "@"
-        TkLParen           -> "("
-        TkRParen           -> ")"
-        TkLCurly           -> "{"
-        TkRCurly           -> "}"
-        TkUnderscore       -> "_"
+                TkColon            -> ":"
+                TkSemicolon        -> ";"
+                TkDot              -> "."
+                TkArrow            -> "->"
+                TkBackslash        -> "\\"
+                TkEquals           -> "="
+                TkComma            -> ","
+                -- TkAt               -> "@"
+                TkLParen           -> "("
+                TkRParen           -> ")"
+                TkLCurly           -> "{"
+                TkRCurly           -> "}"
+                TkUnderscore       -> "_"
 
-        TkEOF                -> "<eof>"
-    where
-        showId str = "«" ++ str ++ "»"
+                TkEOF                -> "<eof>"
+            where
+                showId str = "«" ++ str ++ "»"
+
+instance PrettyShow Token where
+        pshow tk = case tk of
+                TkVLCurly          -> string "{^" >> line
+                TkVRCurly          -> line >> string "^}"
+                TkVSemicolon       -> string "^;" >> line
+                _                  -> string (show tk)

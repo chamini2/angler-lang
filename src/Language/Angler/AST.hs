@@ -4,12 +4,11 @@ module Language.Angler.AST where
 
 import           Language.Angler.SrcLoc
 
+import           PrettyShow
+
 import           Control.Lens
 import           Control.Monad           (when)
-import           Control.Monad.State     (State, execState)
 
-import           Data.Default            (Default(..))
-import           Data.Foldable           (toList)
 import           Data.List               (intercalate)
 import           Data.Maybe              (isJust)
 import           Data.Sequence           (Seq)
@@ -241,66 +240,6 @@ makeLenses ''Literal
 
 --------------------------------------------------------------------------------
 -- PrettyShow
-
-type Indentation = Int
-type PrettyShowMonad = State PrettyShowState ()
-
-data PrettyShowState
-  = PrettyShowState
-        { _ps_indent    :: Indentation
-        , _ps_lines     :: [(Indentation, String)]
-        }
-
-instance Default PrettyShowState where
-        def = PrettyShowState
-                { _ps_indent = 4
-                , _ps_lines  = [(4, "")]
-                }
-
-makeLenses ''PrettyShowState
-
-class PrettyShow a where
-        pshow :: a -> PrettyShowMonad
-
-prettyShow :: PrettyShow a => a -> String
-prettyShow = prettyShowIndent 0 "    "
-
-prettyShowIndent :: PrettyShow a => Indentation -> String -> a -> String
-prettyShowIndent n str = showLines . _ps_lines . flip execState initialST . pshow
-    where
-        showLines :: [(Indentation, String)] -> String
-        showLines = concatMap (\(ind, s) -> tabs ind ++ s ++ "\n") . reverse
-        tabs :: Indentation -> String
-        tabs ind = concat (replicate ind str)
-        initialST :: PrettyShowState
-        initialST = def
-                { _ps_indent = n
-                , _ps_lines  = [(n, "")]
-                }
-
-----------------------------------------
-
-pshows :: (PrettyShow a, Foldable f) => PrettyShowMonad -> f a -> PrettyShowMonad
-pshows act xs = case toList xs of
-        p : ps -> pshow p >> mapM_ (\x -> act >> pshow x) ps
-        _      -> return ()
-
-string :: String -> PrettyShowMonad
-string str = ps_lines._head._2 %= (++ str)
-
-lstring :: Getting String s String -> s -> PrettyShowMonad
-lstring lns = string . view lns
-
-line :: PrettyShowMonad
-line = use ps_indent >>= \n -> ps_lines %= cons (n, "")
-
-raise :: PrettyShowMonad
-raise = ps_indent += 1
-
-lower :: PrettyShowMonad
-lower = ps_indent -= 1
-
-----------------------------------------
 
 instance PrettyShow (Module a) where
         pshow (Module _ mexprts imprts bdy _) = do
