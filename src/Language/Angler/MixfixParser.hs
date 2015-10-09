@@ -176,7 +176,7 @@ mixfixExpression expr = do
                             pos  = errorPos perr
                             loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
                             spn  = srcLocSpan loc loc
-                            errs = fmap (Loc spn . CheckError . CErr . show) msgs
+                            errs = fmap (Loc spn . CheckError . messageCheckError) msgs
                         throwError errs
                         return expr
                 Right x -> return x
@@ -190,6 +190,11 @@ mixfixExpression expr = do
                         [x'] -> flattenExpression x'
                         xs'  -> Apply (fromList (fmap flattenExpression xs')) an
                 _ -> x
+        messageCheckError :: Message -> CheckError
+        messageCheckError msg = case msg of
+                Expected   str -> CErrExpected str
+                Unexpected str -> CErrUnexpected str
+                Message    str -> CErr str
 
 mixfixTypeBind :: TypeBindSpan -> Mixfix TypeBindSpan
 mixfixTypeBind = mapMOf typ_type mixfixWhere
@@ -320,7 +325,7 @@ generateOpP = topOpP <* eof
                                         Var name _ -> if name `notElem` (parts prec)
                                                 then Right x
                                                 else Left [ Unexpected ("operator part " ++ showToken x)
-                                                          , Expected "non-operator identifier" ]
+                                                          , Expected "identifier" ]
                                         _ -> Right x
                                 parts :: PrecedenceTable -> [String]
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)

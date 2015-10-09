@@ -358,31 +358,31 @@ Body :: { BodySpan }
                 ------------------------
                 -- errors
                 | '\ ' {- empty -} '->'
-                                {% throwPError (PErrNoArgumentsIn "lambda")
+                                {% throwPError (PErrNoIn "arguments" "lambda")
                                     (srcSpanSpan $1 $2) }
                 | '\ ' List1(Argument_(LambdaId)) '->' {- empty -}
-                                {% throwPError (PErrNoExpressionIn "lambda")
+                                {% throwPError (PErrNoIn "expression" "lambda")
                                     (srcSpanSpan $1 $3) }
                 | 'let' '{^' {- empty -} CloseBrace 'in'
                                 {% throwPError (PErrEmptyLayoutAfter "let")
                                     (srcSpanSpan $1 $4) }
                 | 'let' '{^' Body CloseBrace 'in' {- empty -}
-                                {% throwPError (PErrNoExpressionIn "let-in")
+                                {% throwPError (PErrNoIn "expression" "let-in")
                                     (srcSpanSpan $1 $5) }
                 | 'forall' {- empty -} '.'
-                                {% throwPError (PErrNoVariablesIn "forall")
+                                {% throwPError (PErrNoIn "type binds" "forall")
                                     (srcSpanSpan $1 $2) }
                 | 'forall' ListSep1(TypeBind_(QuantifierId), ',') '.' {- empty -}
-                                {% throwPError (PErrNoExpressionIn "forall")
+                                {% throwPError (PErrNoIn "expression" "forall")
                                     (srcSpanSpan $1 $3) }
                 | 'exists' {- empty -} '.'
-                                {% throwPError (PErrNoVariableIn "exists")
+                                {% throwPError (PErrNoIn "type bind" "exists")
                                     (srcSpanSpan $1 $2) }
                 | 'exists' TypeBind_(QuantifierId) '.' {- empty -}
-                                {% throwPError (PErrNoExpressionIn "exists")
+                                {% throwPError (PErrNoIn "expression" "exists")
                                         (srcSpanSpan $1 $3) }
                 | 'select' Expression_(expid)
-                                {% throwPError (PErrNoBindIn "select")
+                                {% throwPError (PErrNoIn "binding identifier" "select")
                                         (srcSpanSpan $1 ($2^.exp_annot))}
 
                 LambdaId :: { IdentifierSpan }
@@ -433,7 +433,7 @@ parseError (Loc l tk) = case tk of
         TkVLCurly    -> lexer parseError
         TkVRCurly    -> lexer parseError
         TkVSemicolon -> lexer parseError
-        _            -> (throwError . Loc l . ParseError . PErr . show) tk
+        _            -> (throwError . Loc l . ParseError . PErrUnexpectedToken . show) tk
 
 throwPError :: ParseError -> SrcSpan -> LP a
 throwPError err = throwError . flip Loc (ParseError err)

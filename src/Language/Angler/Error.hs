@@ -3,41 +3,71 @@ module Language.Angler.Error where
 import           Prelude hiding (IOError)
 
 data Warning
-  = TabCharacter
-  | Warn                        String
-  deriving Show
+  = Warn                        String
+  | TabCharacter
+
+instance Show Warning where
+        show w = "WARNING: " ++ case w of
+                Warn str     -> str
+                TabCharacter -> "tab character, use spaces instead"
 
 data Error
-  = LexError    LexError
+  = Err         String
+  | LexError    LexError
   | ParseError  ParseError
   | CheckError  CheckError
   | IOError     IOError
-  | Err         String
-  deriving Show
+
+instance Show Error where
+        show e = case e of
+                Err       str -> "ERROR: " ++ str
+                LexError   le -> "LEXER ERROR: " ++ show le
+                ParseError pe -> "PARSE ERROR: " ++ show pe
+                CheckError ce -> "ERROR: " ++ show ce
+                IOError   ioe -> "IO ERROR: " ++ show ioe
 
 data LexError
   = LErr                        String
   | LErrUnexpectedCharacter     Char
   | LErrUnterminatedComment
-  deriving Show
+
+instance Show LexError where
+        show le = case le of
+                LErr                  str -> str
+                LErrUnexpectedCharacter c -> "unexpected character " ++ [c]
+                LErrUnterminatedComment   -> "unterminated comment"
 
 data ParseError
   = PErr                        String
+  | PErrUnexpectedToken         String
   | PErrEmptyLayoutAfter        String
   | PErrExpectingIn             String String
+  | PErrNoIn                    String String
 
-  -- expressions
-  | PErrNoArgumentsIn           String
-  | PErrNoExpressionIn          String
-  | PErrNoVariablesIn           String
-  | PErrNoVariableIn            String
-  | PErrNoBindIn                String
-  deriving Show
+instance Show ParseError where
+        show pe = case pe of
+                PErr               str -> str
+                PErrUnexpectedToken tk -> "unexpected token " ++ tk
+                PErrEmptyLayoutAfter w -> "empty layout after " ++ w
+                PErrExpectingIn    e c -> "expected " ++ e ++ " in " ++ c
+                PErrNoIn           e c -> "no " ++ e ++ " in " ++ c
 
 data CheckError
   = CErr                        String
-  | AlreadyInSymbolTable        String
-  deriving Show
+
+  -- symbol table
+  | CErrAlreadyInSymbolTable    String
+
+  -- mixfix parser
+  | CErrExpected                String
+  | CErrUnexpected              String
+
+instance Show CheckError where
+        show ce = case ce of
+                CErr                     str -> str
+                CErrAlreadyInSymbolTable idn -> "identifier '" ++ idn ++ "' has already been declared at thi scope"
+                CErrExpected              tk -> "in mixfix parser, expected " ++ tk
+                CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ tk
 
 data IOError
   = IOErr                       String

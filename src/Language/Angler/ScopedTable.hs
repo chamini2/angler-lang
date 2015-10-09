@@ -61,12 +61,12 @@ elemInTop str = views tab_stack (P.elem str . Map.keys . head)
 
 safeInsert :: String -> sym -> ScopedTable sym -> Either Error (ScopedTable sym)
 safeInsert str sym tab = if elem str tab
-        then (Left . CheckError . AlreadyInSymbolTable) str
+        then (Left . CheckError . CErrAlreadyInSymbolTable) str
         else Right (over (tab_stack._head) (Map.insert str sym) tab)
 
 insert :: String -> sym -> ScopedTable sym -> ScopedTable sym
 insert str sym tab = if elemInTop str tab
-        then (error . show . CheckError . AlreadyInSymbolTable) str
+        then (error . show . CheckError . CErrAlreadyInSymbolTable) str
         else over (tab_stack._head) (Map.insert str sym) tab
 
 toList :: ScopedTable sym -> [(String, sym)]

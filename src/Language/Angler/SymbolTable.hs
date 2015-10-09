@@ -53,7 +53,7 @@ makeLenses ''Symbol
 -- insertFunctionDecl :: Identifier a -> Expression a -> a
 --                    {--> _-} ->  SymbolTable a -> Either Error (SymbolTable a)
 -- insertFunctionDecl idn ex ann {-op-} tab = case view (at idnStr) tab of
---         Just _  -> (Left . CheckError . AlreadyInSymbolTable) idnStr
+--         Just _  -> (Left . CheckError . CErrAlreadyInSymbolTable) idnStr
 --         Nothing -> Right (Map.insert idnStr symFun tab)
 --     where
 --         -- symFun :: Symbol a
