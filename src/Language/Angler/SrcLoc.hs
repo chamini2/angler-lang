@@ -22,9 +22,12 @@ module Language.Angler.SrcLoc
         , srcLocatedSpan
         ) where
 
-import           Control.Lens
+import           Language.Angler.Error
 
-import           Prelude hiding (span)
+import           Control.Lens
+import           Data.List    (intercalate)
+
+import           Prelude      hiding (span)
 
 -- is only used in the lexer
 data SrcLoc
@@ -33,7 +36,12 @@ data SrcLoc
         , srcLocLine    :: Int     -- line number, begins at 1
         , srcLocCol     :: Int     -- column number, begins at 1
         }
-  deriving Show
+
+locationSeparator :: [String] -> String
+locationSeparator strs = intercalate ":" strs ++ ":"
+
+instance Show SrcLoc where
+        show (SrcLoc f l c) = locationSeparator (f : fmap show [l, c])
 
 startLoc :: FilePath -> SrcLoc
 startLoc f = SrcLoc f 1 1
@@ -65,7 +73,13 @@ data SrcSpan
         -- , srcSpanELine  :: Int
         -- , srcSpanECol   :: Int
         -- }
-  deriving Show
+
+instance Show SrcSpan where
+        show spn = case spn of
+                SrcSpanNoInfo                  -> "<no location info>:"
+                SrcSpanPoint f l c             -> locationSeparator (f : fmap show [l, c])
+                SrcSpanOneLine f l c1 c2       -> locationSeparator (f : fmap show [l, c1, c2])
+                SrcSpanMultiline f l1 c1 l2 c2 -> locationSeparator (f : fmap show [l1, c1, l2, c2])
 
 srcSpanSLoc :: SrcSpan -> SrcLoc
 srcSpanSLoc span = case span of
@@ -132,16 +146,17 @@ data Located e
         { _loc_span :: SrcSpan
         , _loc_insd :: e
         }
-  deriving Show
 
 makeLenses ''Located
+
+instance Show e => Show (Located e) where
+        show (Loc spn e) = show spn ++ "\n\t" ++ show e ++ "\n"
 
 srcSpanSpan :: SrcSpan -> SrcSpan -> SrcSpan
 srcSpanSpan s e = case (s,e) of
         (SrcSpanNoInfo, _            ) -> e
         (_            , SrcSpanNoInfo) -> s
         _                              -> srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
-
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan
 srcLocatedSpan (Loc s _) (Loc e _) = srcSpanSpan s e

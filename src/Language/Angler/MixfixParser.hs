@@ -21,7 +21,8 @@ import           Control.Monad.Except        (Except, runExcept)
 import           Control.Monad.State         (StateT, runStateT)
 import           Control.Monad.Trans         (lift)
 
-import           Data.Default
+import           Data.Char                   (isSpace)
+import           Data.Default                (Default(..))
 import           Data.Foldable               (toList)
 import           Data.Function               (on)
 import           Data.List                   (sortBy)
@@ -236,7 +237,10 @@ runOpP act spn = runParserT (setPosition pos >> act) filepath
         pos = newPos filepath (srcSpanSLine spn) (srcSpanSCol spn)
 
 instance Show a => ShowToken (Expression a) where
-        showToken = prettyShow
+        showToken = trim . prettyShow
+            where
+                trim :: String -> String
+                trim = reverse . dropWhile isSpace . reverse
 
 instance ShowToken a => ShowToken [a] where
         showToken = show
