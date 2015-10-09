@@ -268,13 +268,13 @@ var :: String -> OpP ExprSpan
 var str = satisfy' testExpr
     where
         testExpr :: ExprSpan -> Either [Message] ExprSpan
-        testExpr x = if testVar x
+        testExpr x = if testVar
                 then Right x
                 else Left [ Unexpected (showToken x)
                           , Expected str ]
             where
-                testVar :: ExprSpan -> Bool
-                testVar x = case x of
+                testVar :: Bool
+                testVar = case x of
                         Var name _ -> name == str
                         _          -> False
 
@@ -358,10 +358,8 @@ generateOpP = topOpP <* eof
                                         Select typ an -> do
                                                 typ' <- lift (mixfixTypeBind typ)
                                                 return (Select typ' an)
-                                        ImplicitExpr xs an -> do
+                                        ImplicitExpr xs an ->
                                                 mapMOf (impl_exprs.traverse) (lift . mixfixImplicit) expr
-                                                -- xs' <- lift (mapM mixfixImplicit xs)
-                                                -- return (ImplicitExpr xs' an)
 
                 closedOpP :: OpP ExprSpan
                 closedOpP = do

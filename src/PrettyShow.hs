@@ -33,7 +33,7 @@ prettyShow :: PrettyShow a => a -> String
 prettyShow = prettyShowIndent 0 "    "
 
 prettyShowIndent :: PrettyShow a
-                 => Indentation         -- Start indentation level
+                 => Indentation         -- Starting indentation level
                  -> String              -- Indentation string
                  -> a -> String
 prettyShowIndent n str = showLines . view ps_lines . flip execState initialST . pshow
