@@ -219,7 +219,7 @@ mixfixArgument arg = do
                 _          -> error "mixfixArgument: impossible case"
 
 mixfixImplicit :: ImplicitBindingSpan -> Mixfix ImplicitBindingSpan
-mixfixImplicit = return
+mixfixImplicit = mapMOf impl_expr mixfixExpression
 
 --------------------------------------------------------------------------------
 -- Parser
