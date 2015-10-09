@@ -2,13 +2,14 @@
 
 module Language.Angler.Parser.LP
         ( LP
+        , Byte
         , LayoutContext(..)
+
         , LPState(..), def
         , lp_buffer, lp_last_char, lp_loc, lp_bytes
         -- , lp_last_tk, lp_last_loc, lp_last_len
         , lp_lex_state, lp_context, lp_srcfiles
         , lp_warnings
-        , Byte
 
         , getOffside
         ) where
@@ -18,7 +19,7 @@ import           Language.Angler.Monad
 import           Language.Angler.SrcLoc
 
 import           Control.Lens
-import           Control.Monad.Except   (ExceptT(..))
+import           Control.Monad.Except   (Except)
 import           Control.Monad.State    (StateT(..))
 import           Data.Default           (Default(..))
 import           Data.Word              (Word8)
@@ -26,7 +27,7 @@ import           Data.Word              (Word8)
 import           Prelude                hiding (span)
 
 -- LexerParser Monad
-type LP = StateT LPState (ExceptT (Located Error) Identity)
+type LP = StateT LPState (Except (Located Error))
 
 type Byte = Word8
 

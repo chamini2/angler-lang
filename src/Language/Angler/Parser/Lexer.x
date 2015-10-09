@@ -28,9 +28,8 @@ import           Language.Angler.Parser.LP
 import qualified Codec.Binary.UTF8.String      as UTF8 (encode)
 import           Control.Lens
 import           Control.Monad                 (liftM)
-import           Control.Monad.Identity        (Identity(runIdentity))
-import           Control.Monad.Except          (runExceptT)
-import           Control.Monad.State           (StateT(runStateT))
+import           Control.Monad.Except          (runExcept)
+import           Control.Monad.State           (StateT(..))
 import qualified Data.Bits                     ((.&.), shiftR)
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map (lookup, fromList)
@@ -319,7 +318,7 @@ processLayout span _buf _len = do
 -- exposed functions
 
 runLP :: String -> SrcLoc -> LP a -> Either (Located Error) (a, LPState)
-runLP input loc = runIdentity . runExceptT . flip runStateT initialST
+runLP input loc = runExcept . flip runStateT initialST
     where
         initialST :: LPState
         initialST = def
