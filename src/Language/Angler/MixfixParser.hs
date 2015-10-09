@@ -124,12 +124,12 @@ scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
 --------------------------------------------------------------------------------
 -- Monad
 
-type Mixfix = StateT OpPState (Except (Located Error))
+type Mixfix = StateT OpPState (Except [Located Error])
 
-runMixfix :: Mixfix a -> Either (Located Error) (a, OpPState)
+runMixfix :: Mixfix a -> Either [Located Error] (a, OpPState)
 runMixfix = runExcept . flip runStateT def
 
-parseMixfix :: ModuleSpan -> Either (Located Error) ModuleSpan
+parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
 parseMixfix = over _Right fst . runMixfix . mixfixModule
 
 --------------------------------------------------------------------------------
@@ -158,7 +158,7 @@ mixfixBodyStmt stmt = case stmt of
                     fix' = set fix_annot () fix
                 merr <- safeInsertSc idn' (Operator idn' fix' mprec)
                 case merr of
-                        Just err -> throwError (Loc spn err)
+                        Just err -> throwError [Loc spn err]
                         _        -> return ()
                 return stmt
 
@@ -176,7 +176,9 @@ mixfixExpression expr = do
                             pos  = errorPos perr
                             loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
                             spn  = srcLocSpan loc loc
-                        (throwError . Loc spn . CheckError . CErr . show . head) msgs
+                            errs = fmap (Loc spn . CheckError . CErr . show) msgs
+                        throwError errs
+                        return expr
                 Right x -> return x
         return (flattenExpression expr')
     where
@@ -255,15 +257,21 @@ satisfy g = satisfy' testExpr
         testExpr :: ExprSpan -> Either [Message] ExprSpan
         testExpr x = if g x
                 then Right x
-                else (Left . pure . Unexpected . showToken) x
+                else Left [Unexpected (showToken x)]
 
 var :: String -> OpP ExprSpan
-var str = satisfy testExpr
+var str = satisfy' testExpr
     where
-        testExpr :: ExprSpan -> Bool
-        testExpr x = case x of
-                Var name _ -> name == str
-                _          -> False
+        testExpr :: ExprSpan -> Either [Message] ExprSpan
+        testExpr x = if testVar x
+                then Right x
+                else Left [ Unexpected (showToken x)
+                          , Expected str ]
+            where
+                testVar :: ExprSpan -> Bool
+                testVar x = case x of
+                        Var name _ -> name == str
+                        _          -> False
 
 searchOps :: Fixity () -> PrecedenceLevel -> [ OperatorParts ]
 searchOps fix = maybe [] id . Map.lookup fix
@@ -305,12 +313,14 @@ generateOpP = topOpP <* eof
                 basicToken = try obviousToken <|> closedOpP
                     where
                         obviousToken :: OpP ExprSpan
-                        obviousToken = precTable >>= satisfy . testExpr >>= retake
+                        obviousToken = precTable >>= satisfy' . testExpr >>= retake
                             where
-                                testExpr :: PrecedenceTable -> ExprSpan -> Bool
+                                testExpr :: PrecedenceTable -> ExprSpan -> Either [Message] ExprSpan
                                 testExpr prec x = case x of
-                                        Var name _ -> name `notElem` (parts prec)
-                                        _          -> True
+                                        Var name _ -> if name `notElem` (parts prec)
+                                                then Right x
+                                                else Left [Unexpected ("operator part " ++ showToken x)]
+                                        _ -> Right x
                                 parts :: PrecedenceTable -> [String]
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)
                                 retake :: ExprSpan -> OpP ExprSpan
@@ -343,8 +353,9 @@ generateOpP = topOpP <* eof
                                                 typ' <- lift (mixfixTypeBind typ)
                                                 return (Select typ' an)
                                         ImplicitExpr xs an -> do
-                                                xs' <- lift (mapM mixfixImplicit xs)
-                                                return (ImplicitExpr xs' an)
+                                                mapMOf (impl_exprs.traverse) (lift . mixfixImplicit) expr
+                                                -- xs' <- lift (mapM mixfixImplicit xs)
+                                                -- return (ImplicitExpr xs' an)
 
                 closedOpP :: OpP ExprSpan
                 closedOpP = do
