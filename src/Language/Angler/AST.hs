@@ -9,6 +9,7 @@ import           PrettyShow
 import           Control.Lens
 import           Control.Monad           (when)
 
+import           Data.Foldable           (toList)
 import           Data.List               (intercalate)
 import           Data.Maybe              (isJust)
 import           Data.Sequence           (Seq)
@@ -311,31 +312,53 @@ instance PrettyShow (f a) => PrettyShow (Where f a) where
                                 lower >> lower
 
 instance PrettyShow (Expression a) where
-        pshow expr = case expr of
-                Var str _           -> string "«" >> string str >> string "»"
-                Lit lit _           -> pshow lit
-                Apply exprs   _     -> string "(" >> pshows (string " ") exprs >> string ")"
-                Lambda arg expr' _  -> string "\\ " >> pshow arg >> string " -> " >> pshow expr'
-                Let bdy expr' _     -> do
-                        raise >> line
-                        string "let"
-
-                        raise >> line
-                        pshows line bdy
-                        lower >> line
-
-                        string "in "
-                        pshow expr'
-                        lower
-                Forall typs expr' _ -> string "forall " >> pshows' ", " typs >> string " . "
-                                                        >> pshow expr'
-                Exists typ expr' _  -> string "exists " >> pshow typ >> string " ; "
-                                                        >> pshow expr'
-                Select typ _        -> string "select " >> pshow typ
-                ImplicitExpr imps _ -> string "{" >> pshows' " " imps >> string "}"
+        pshow = pshow' False
             where
-                pshows' :: (PrettyShow a, Foldable f) => String -> f a -> PrettyShowMonad
-                pshows' = pshows . string
+                pshow' :: Bool -> Expression a -> PrettyShowed
+                pshow' paren expr = pparen "(" >> exprCase >> pparen ")"
+                    where
+                        pparen :: String -> PrettyShowed
+                        pparen s = case expr of
+                                Var {}          -> return ()
+                                Lit {}          -> return ()
+                                ImplicitExpr {} -> return ()
+                                _ -> if paren then string s else return ()
+                        exprCase :: PrettyShowed
+                        exprCase = case expr of
+                                Var str _  -> string "«" >> string str >> string "»"
+                                Lit lit _  -> pshow lit
+                                Apply xs _ -> pshows' " " xs
+                                Lambda arg x _ -> do
+                                        string "\\ " >> pshow arg
+                                        string " -> " >> pshow x
+                                Let bdy x _ -> do
+                                        raise >> line
+                                        string "let"
+
+                                        raise >> line
+                                        pshows line bdy
+                                        lower >> line >> lower
+
+                                        string "in "
+                                        pshow x
+                                Forall typs x _ -> do
+                                        string "forall "
+                                        pshows (string ", ") typs
+                                        string " . "
+                                        pshow x
+                                Exists typ x _ -> do
+                                        string "exists " >> pshow typ
+                                        string " . " >> pshow x
+                                Select typ _ -> string "select " >> pshow typ
+                                ImplicitExpr ims _ ->
+                                        string "{" >> pshows (string ", ") ims >> string "}"
+                        pshows' :: (Foldable f) => String -> f (Expression a) -> PrettyShowed
+                        pshows' str exprs = case toList exprs of
+                                p : ps -> pshow' True p >> mapM_ go ps
+                                _      -> return ()
+                            where
+                                go :: Expression a -> PrettyShowed
+                                go x = string str >> pshow' True x
 
 instance PrettyShow Associativity where
         pshow assoc = case assoc of
@@ -354,10 +377,27 @@ instance PrettyShow (TypeBind a) where
         pshow (TypeBind idn typ _) = lstring idn_str idn >> string " : " >> pshow typ
 
 instance PrettyShow (Argument a) where
-        pshow arg = case arg of
-                VarBinding idn _    -> string idn
-                DontCare _          -> string "_"
-                ApplyBinding args _ -> string "(" >> pshows (string " ") args >> string ")"
+        pshow = pshow' False
+            where
+                pshow' :: Bool -> Argument a -> PrettyShowed
+                pshow' paren arg = pparen "(" >> argCase >> pparen ")"
+                    where
+                        pparen :: String -> PrettyShowed
+                        pparen s = case arg of
+                                ApplyBinding {} -> if paren then string s else return ()
+                                _ -> return ()
+                        argCase :: PrettyShowed
+                        argCase = case arg of
+                                VarBinding idn _    -> string idn
+                                DontCare _          -> string "_"
+                                ApplyBinding args _ -> pshows' " " args
+                        pshows' :: (Foldable f) => String -> f (Argument a) -> PrettyShowed
+                        pshows' str args = case toList args of
+                                p : ps -> pshow' True p >> mapM_ go ps
+                                _      -> return ()
+                            where
+                                go :: Argument a -> PrettyShowed
+                                go x = string str >> pshow' True x
 
 instance PrettyShow (ImplicitBinding a) where
         pshow (ImplicitBind idn expr _) = lstring idn_str idn >> string " = " >> pshow expr

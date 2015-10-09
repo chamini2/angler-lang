@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 
 module PrettyShow
-    ( PrettyShow(pshow), PrettyShowMonad
+    ( PrettyShow(pshow), PrettyShowed
     , prettyShow, prettyShowIndent
 
     , pshows
@@ -16,7 +16,7 @@ import           Control.Monad.State     (State, execState)
 import           Data.Foldable           (toList)
 
 type Indentation = Int
-type PrettyShowMonad = State PrettyShowState ()
+type PrettyShowed = State PrettyShowState ()
 
 data PrettyShowState
   = PrettyShowState
@@ -27,7 +27,7 @@ data PrettyShowState
 makeLenses ''PrettyShowState
 
 class PrettyShow a where
-        pshow :: a -> PrettyShowMonad
+        pshow :: a -> PrettyShowed
 
 prettyShow :: PrettyShow a => a -> String
 prettyShow = prettyShowIndent 0 "    "
@@ -50,22 +50,22 @@ prettyShowIndent n str = showLines . view ps_lines . flip execState initialST . 
 
 ----------------------------------------
 
-pshows :: (PrettyShow a, Foldable f) => PrettyShowMonad -> f a -> PrettyShowMonad
+pshows :: (PrettyShow a, Foldable f) => PrettyShowed -> f a -> PrettyShowed
 pshows act xs = case toList xs of
         p : ps -> pshow p >> mapM_ (\x -> act >> pshow x) ps
         _      -> return ()
 
-string :: String -> PrettyShowMonad
+string :: String -> PrettyShowed
 string str = ps_lines._head._2 %= (++ str)
 
-lstring :: Lens' s String -> s -> PrettyShowMonad
+lstring :: Lens' s String -> s -> PrettyShowed
 lstring lns = string . view lns
 
-line :: PrettyShowMonad
+line :: PrettyShowed
 line = use ps_level >>= \n -> ps_lines %= cons (n, "")
 
-raise :: PrettyShowMonad
+raise :: PrettyShowed
 raise = ps_level += 1
 
-lower :: PrettyShowMonad
+lower :: PrettyShowed
 lower = ps_level -= 1
