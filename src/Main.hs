@@ -78,8 +78,9 @@ readModule options filepath handle = do
                 putStr "\n\n***** parser\n\n"
                 putStrLn (prettyShow ast)
 
-        let (ast', errs) = parseMixfix ast
-        showErrorsUnlessNull errs
+        ast' <- case parseMixfix ast of
+                Right ast' -> return ast'
+                Left  err  -> showError err
 
         putStr "\n\n***** after Mixfix\n\n"
         putStrLn (prettyShow ast')

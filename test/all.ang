@@ -27,21 +27,6 @@ closed Nat : Type with
         Z : Nat
         S : Nat -> Nat
 
--- _._ {a = Nat, c = Nat} id id
-
--- open Char : Type
--- a' : Char
--- b' : Char
--- c' : Char
--- d' : Char
--- e' : Char
-
--- open Currency : Type
--- USD : Currency
--- EUR : Currency
-
--- USD = EUR
-
 String : Type
 String = List Char
 
@@ -55,12 +40,15 @@ closed Bool : Type with
 reopen Type with
         Tipo : Type -> Type
 
-open Count : Type with
+open Count : Type
+
+reopen Count with
         One : Count
 
-open Currency : Type
+reopen Count with
+        Two : Count
 
-reopen Currency with
+open Currency : Type with
         USD : Nat -> Currency
         EUR : Nat -> Currency
 

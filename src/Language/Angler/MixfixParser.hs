@@ -17,7 +17,8 @@ import           PrettyShow
 import           Control.Applicative         (Alternative(..), (<|>), liftA, many)
 import           Control.Lens                hiding (op, below, parts)
 import           Control.Monad               (forM_)
-import           Control.Monad.State         (State, runState)
+import           Control.Monad.Except        (Except, runExcept)
+import           Control.Monad.State         (StateT, runStateT)
 import           Control.Monad.Trans         (lift)
 
 import           Data.Default
@@ -80,9 +81,7 @@ op_repr op_fn (Operator idn fix prec) = wrap <$> op_fn (strOp idn)
 
 data OpPState
   = OpPState
-        { _opp_table     :: ScopedTable Operator
-        , _opp_errs      :: [ Located Error ]
-        }
+        { _opp_table     :: ScopedTable Operator }
 
 makeLenses ''Operator
 makeLenses ''OpPState
@@ -91,10 +90,7 @@ instance STScopedTable OpPState Operator where
         st_table = opp_table
 
 instance Default OpPState where
-        def = OpPState
-                { _opp_table = ST.empty
-                , _opp_errs  = []
-                }
+        def = OpPState { _opp_table = ST.empty }
 
 scopedTabPrecedenceTab :: ScopedTable Operator -> PrecedenceTable
 scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
@@ -128,13 +124,13 @@ scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
 --------------------------------------------------------------------------------
 -- Monad
 
-type Mixfix = State OpPState
+type Mixfix = StateT OpPState (Except (Located Error))
 
-runMixfix :: Mixfix a -> (a, OpPState)
-runMixfix = flip runState def
+runMixfix :: Mixfix a -> Either (Located Error) (a, OpPState)
+runMixfix = runExcept . flip runStateT def
 
-parseMixfix :: ModuleSpan -> (ModuleSpan, [ Located Error ])
-parseMixfix = over _2 (view opp_errs) . runMixfix . mixfixModule
+parseMixfix :: ModuleSpan -> Either (Located Error) ModuleSpan
+parseMixfix = over _Right fst . runMixfix . mixfixModule
 
 --------------------------------------------------------------------------------
 
@@ -162,7 +158,7 @@ mixfixBodyStmt stmt = case stmt of
                     fix' = set fix_annot () fix
                 merr <- safeInsertSc idn' (Operator idn' fix' mprec)
                 case merr of
-                        Just err -> pushM opp_errs (Loc spn err)
+                        Just err -> throwError (Loc spn err)
                         _        -> return ()
                 return stmt
 
@@ -180,8 +176,7 @@ mixfixExpression expr = do
                             pos  = errorPos perr
                             loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
                             spn  = srcLocSpan loc loc
-                        forM_ msgs (pushM opp_errs . Loc spn . CheckError . CErr . show)
-                        return expr
+                        (throwError . Loc spn . CheckError . CErr . show . head) msgs
                 Right x -> return x
         return (flattenExpression expr')
     where
@@ -260,7 +255,7 @@ satisfy g = satisfy' testExpr
         testExpr :: ExprSpan -> Either [Message] ExprSpan
         testExpr x = if g x
                 then Right x
-                else (Left . return . Unexpected . showToken) x
+                else (Left . pure . Unexpected . showToken) x
 
 var :: String -> OpP ExprSpan
 var str = satisfy testExpr
