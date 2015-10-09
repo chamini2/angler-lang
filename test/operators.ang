@@ -10,6 +10,14 @@ operator -_                 prefix  7
 operator _!                 postfix 8
 operator <_>                closed
 
+_+_ : Nat -> Nat -> Nat
+Z   + n = n
+S m + n = S (m + n)
+
+if_then_else_ : forall t:Type . Bool -> t -> t -> t
+if True  then x else _ = x
+if False then _ else x = x
+
 x = < a >
 
 x = if a b c == (d e /= f l) then g + h - i * j! - -k else -m!

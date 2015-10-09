@@ -35,8 +35,7 @@ import           Text.Megaparsec.Error       (ParseError, Message(..),
                                               errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
                                               setSourceLine, setSourceColumn)
-import           Text.Megaparsec.Prim        (getInput, setInput, getParserState,
-                                              setParserState)
+import           Text.Megaparsec.Prim        (getInput, setInput)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 import           Prelude                     hiding (lookup)
@@ -158,7 +157,7 @@ mixfixBodyStmt stmt = case stmt of
                 mapMOf (clsd_cnts.traverse) mixfixTypeBind stmt'
         FunctionDecl {} -> mapMOf fdec_type mixfixWhere stmt
         FunctionDef {} -> do
-                stmt' <- mapMOf (fdef_args.traverse) mixfixArgument stmt
+                stmt' <- mapMOf fdef_args mixfixArgument stmt
                 mapMOf fdef_expr mixfixWhere stmt'
         OperatorDef idn fix mprec spn -> do
                 let idn' = view idn_str idn
@@ -191,17 +190,33 @@ mixfixExpression expr = do
         parse :: [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
         parse = runOpP generateOpP (views exp_annot srcSpanFile expr)
         flattenExpression :: ExpressionSpan -> ExpressionSpan
-        flattenExpression expr = case expr of
+        flattenExpression x = case x of
                 Apply xs an -> case toList xs of
-                        [x] -> flattenExpression x
-                        xs  -> Apply (fromList (fmap flattenExpression xs)) an
-                _ -> expr
+                        [x'] -> flattenExpression x'
+                        xs'  -> Apply (fromList (fmap flattenExpression xs')) an
+                _ -> x
 
 mixfixTypeBind :: TypeBindSpan -> Mixfix TypeBindSpan
-mixfixTypeBind = return
+mixfixTypeBind = mapMOf typ_type mixfixWhere
 
 mixfixArgument :: ArgumentSpan -> Mixfix ArgumentSpan
-mixfixArgument = return
+mixfixArgument arg = do
+        expr <- mixfixExpression (argExpr arg)
+        return (exprArg expr)
+    where
+        argExpr :: ArgumentSpan -> ExpressionSpan
+        argExpr arg = case arg of
+                VarBinding idn an  -> Var idn an
+                DontCare an        -> Lit (error "mixfixArgument: DontCare") an
+                ApplyBinding xs an -> Apply (fmap argExpr xs) an
+        exprArg :: ExpressionSpan -> ArgumentSpan
+        exprArg expr = case expr of
+                Apply xs an -> case toList xs of
+                        [x] -> exprArg x
+                        _   -> ApplyBinding (fmap exprArg xs) an
+                Var idn an -> VarBinding idn an
+                Lit _   an -> DontCare an
+                _          -> error "mixfixArgument: impossible case"
 
 mixfixImplicit :: ImplicitBindingSpan -> Mixfix ImplicitBindingSpan
 mixfixImplicit = return
