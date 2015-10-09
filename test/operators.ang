@@ -20,6 +20,9 @@ if False then _ else x = x
 
 x = < a >
 
+x : Bool -> Nat
+x b = S Z + (if b then Z else S Z)
+
 x = if a b c == (d e /= f l) then g + h - i * j! - -k else -m!
 -- x = (if_then_else_
 --         (_==_ (a b c)

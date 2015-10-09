@@ -1,0 +1,16 @@
+operator if_then_else_      prefix  0
+operator _==_               infixN  3
+operator _/=_               infixN  3
+operator _+_                infixL  4
+operator _-_                infixL  4
+operator _*_                infixL  5
+operator _/_                infixL  5
+operator _^_                infixR  6
+operator -_                 prefix  7
+operator _!                 postfix 8
+operator <_>                closed
+
+-- x = ^
+-- x = a ==
+x = a == b /= c
+c = ! a

@@ -19,7 +19,7 @@ import           Data.Foldable                 (toList)
 
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
 import           System.Directory              (doesFileExist)
--- import           System.Exit                   (exitWith, ExitCode(..))
+import           System.Exit                   (exitWith, ExitCode(..))
 import           System.Environment            (getArgs)
 import           System.FilePath               ((</>), addExtension, pathSeparator)
 import           System.IO                     (Handle, IOMode(..), hGetContents,
@@ -80,7 +80,7 @@ readModule options filepath handle = do
 
         ast' <- case parseMixfix ast of
                 Right ast' -> return ast'
-                Left  err  -> showError err
+                Left  err  -> showErrors err >> return ast
 
         putStr "\n\n***** after Mixfix\n\n"
         putStrLn (prettyShow ast')
@@ -127,14 +127,21 @@ readModule options filepath handle = do
                                 '.' -> pathSeparator : path
                                 _   -> c             : path-}
 
+-- maybe receive the ExitCode number instead of just plugging a one
 strError :: String -> IO a
-strError = ioError . userError
+strError str = putStrLn str >> exitWith (ExitFailure 1)
+
+strErrors :: Foldable f => f String -> IO a
+strErrors = strError . concat
 
 strErrorsUnlessNull :: Foldable f => f String -> IO ()
-strErrorsUnlessNull es = unless (null es) $ (strError . concat) es
+strErrorsUnlessNull es = unless (null es) (strErrors es)
 
 showError :: Show s => s -> IO a
 showError = strError . show
+
+showErrors :: (Functor f, Foldable f, Show s) => f s -> IO a
+showErrors = strErrors . fmap ((++"\n") . show)
 
 showErrorsUnlessNull :: (Functor f, Foldable f, Show s) => f s -> IO ()
 showErrorsUnlessNull = strErrorsUnlessNull . fmap ((++"\n") . show)

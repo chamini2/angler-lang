@@ -319,7 +319,8 @@ generateOpP = topOpP <* eof
                                 testExpr prec x = case x of
                                         Var name _ -> if name `notElem` (parts prec)
                                                 then Right x
-                                                else Left [Unexpected ("operator part " ++ showToken x)]
+                                                else Left [ Unexpected ("operator part " ++ showToken x)
+                                                          , Expected "non-operator identifier" ]
                                         _ -> Right x
                                 parts :: PrecedenceTable -> [String]
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)

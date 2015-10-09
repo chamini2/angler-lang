@@ -89,8 +89,6 @@ filterVect _ (Nil    ) = Nil
 -- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
 -- filterVect _ (Nil    ) {n = Z    } = Nil
 
--- map : forall
-
 const : forall a:Type, b:Type . a -> b -> b
 const = \ _ x -> x
 
