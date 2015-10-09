@@ -25,7 +25,7 @@ import           Data.Foldable               (toList)
 import           Data.Function               (on)
 import           Data.List                   (sortBy)
 import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as Map (empty, insertWith, lookup, singleton)
+import qualified Data.Map.Strict             as Map
 import           Data.Maybe                  (isNothing)
 import           Data.Sequence               (Seq, fromList)
 
@@ -33,14 +33,12 @@ import           Text.Megaparsec             (ParsecT, choice, eof, runParserT,
                                               token, try)
 import           Text.Megaparsec.Error       (ParseError, Message(..),
                                               errorMessages, errorPos)
-import           Text.Megaparsec.Pos         (SourcePos(..), setSourceName,
+import           Text.Megaparsec.Pos         (SourcePos(..), newPos, setSourceName,
                                               setSourceLine, setSourceColumn)
-import           Text.Megaparsec.Prim        (getInput, setInput)
+import           Text.Megaparsec.Prim        (getInput, setInput, setPosition)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 import           Prelude                     hiding (lookup)
-
-import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Operator handling
@@ -188,7 +186,7 @@ mixfixExpression expr = do
         return (flattenExpression expr')
     where
         parse :: [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
-        parse = runOpP generateOpP (views exp_annot srcSpanFile expr)
+        parse = runOpP generateOpP (view exp_annot expr)
         flattenExpression :: ExpressionSpan -> ExpressionSpan
         flattenExpression x = case x of
                 Apply xs an -> case toList xs of
@@ -205,7 +203,7 @@ mixfixArgument arg = do
         return (exprArg expr)
     where
         argExpr :: ArgumentSpan -> ExpressionSpan
-        argExpr arg = case arg of
+        argExpr arg' = case arg' of
                 VarBinding idn an  -> Var idn an
                 DontCare an        -> Lit (error "mixfixArgument: DontCare") an
                 ApplyBinding xs an -> Apply (fmap argExpr xs) an
@@ -227,8 +225,13 @@ mixfixImplicit = mapMOf impl_expr mixfixExpression
 type ExprSpan = ExpressionSpan
 type OpP = ParsecT [ExprSpan] Mixfix
 
-runOpP :: OpP a -> FilePath -> [ExprSpan] -> Mixfix (Either ParseError a)
-runOpP = runParserT
+runOpP :: OpP a -> SrcSpan -> [ExprSpan] -> Mixfix (Either ParseError a)
+runOpP act spn = runParserT (setPosition pos >> act) filepath
+    where
+        filepath :: FilePath
+        filepath = srcSpanFile spn
+        pos :: SourcePos
+        pos = newPos filepath (srcSpanSLine spn) (srcSpanSCol spn)
 
 instance Show a => ShowToken (Expression a) where
         showToken = prettyShow
