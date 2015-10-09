@@ -213,9 +213,9 @@ Body :: { BodySpan }
 
         -- function definition
             -- f $ x = f x
-        | List1(Argument(FunId)) '=' ExpressionWhere
+        | Argument(FunId) '=' ExpressionWhere
                         { FunctionDef $1 $3
-                            (srcSpanSpan ($1^?!_head.arg_annot) ($3^.whre_annot)) }
+                            (srcSpanSpan ($1^.arg_annot) ($3^.whre_annot)) }
         | 'operator' Id Fixity Maybe(LitInt)
                         { OperatorDef $2 $3 ($4^?_Just.lit_int)
                             (srcSpanSpan $1 (maybe ($3^.fix_annot) (^.lit_annot) $4)) }
@@ -255,9 +255,9 @@ Body :: { BodySpan }
         | {- empty -} '=' ExpressionWhere
                         {% throwPError (PErrExpectingIn "identifier" "function definition")
                             (srcSpanSpan $1 ($2^.whre_annot)) }
-        | List1(Argument(FunId)) '='
+        | Argument(FunId) '='
                         {% throwPError (PErrExpectingIn "expression" "function definition")
-                            (srcSpanSpan ($1^?!_head.arg_annot) $2) }
+                            (srcSpanSpan ($1^.arg_annot) $2) }
 
     ----------------------------------------
 
@@ -279,10 +279,18 @@ Body :: { BodySpan }
             | 'infixN'      { Infix NonAssoc   $1 }
 
         Argument(argid) :: { ArgumentSpan }
+            : List1(Argument_(argid))
+                            { if length $1 == 1
+                                then $1^?!_head
+                                else ApplyBinding $1
+                                        (srcSpanSpan ($1^?!_head.arg_annot)
+                                                     ($1^?!_last.arg_annot)) }
+
+        Argument_(argid) :: { ArgumentSpan }
             : '_'           { DontCare $1 }
-            | argid         { Binding $1 ($1^.idn_annot) }
-            | '(' List1(Argument(ExpId)) ')'
-                            { ParenthesizedBinding $2 (srcSpanSpan $1 $3) }
+            | argid         { VarBinding ($1^.idn_str) ($1^.idn_annot) }
+            | '(' Argument(ExpId) ')'
+                            { $2 & arg_annot .~ (srcSpanSpan $1 $3) }
 
         FunId :: { IdentifierSpan }
             : QId           { $1 }
@@ -328,7 +336,7 @@ Body :: { BodySpan }
                 | EqualsId      { $1 }
 
             ExpressionList_(expid) :: { Seq ExpressionSpan }
-                : '\ ' List1(Argument(LambdaId)) '->' Expression_(expid)
+                : '\ ' List1(Argument_(LambdaId)) '->' Expression_(expid)
                                 { let s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
                                   in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
                 | 'let' '{^' Body CloseBrace 'in' Expression_(expid)
@@ -352,7 +360,7 @@ Body :: { BodySpan }
                 | '\ ' {- empty -} '->'
                                 {% throwPError (PErrNoArgumentsIn "lambda")
                                     (srcSpanSpan $1 $2) }
-                | '\ ' List1(Argument(LambdaId)) '->' {- empty -}
+                | '\ ' List1(Argument_(LambdaId)) '->' {- empty -}
                                 {% throwPError (PErrNoExpressionIn "lambda")
                                     (srcSpanSpan $1 $3) }
                 | 'let' '{^' {- empty -} CloseBrace 'in'

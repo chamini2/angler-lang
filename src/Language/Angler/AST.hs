@@ -69,7 +69,7 @@ data BodyStmt a
         , _stm_annot    :: a
         }
   | FunctionDef
-        { _fdef_args    :: Seq (Argument a)
+        { _fdef_args    :: Argument a
         , _fdef_expr    :: ExprWhere a
         , _stm_annot    :: a
         }
@@ -185,16 +185,16 @@ instance Ord (Fixity a) where
                         Infix ass _ -> "Infix" ++ show ass
 
 data Argument a
-  = Binding
-        { _bind_idn     :: Identifier a
+  = VarBinding
+        { _bind_idn     :: String
+        , _arg_annot    :: a
+        }
+  | ApplyBinding
+        { _paren_expr   :: Seq (Argument a)
         , _arg_annot    :: a
         }
   | DontCare
         { _arg_annot    :: a }
-  | ParenthesizedBinding
-        { _paren_expr   :: Seq (Argument a)
-        , _arg_annot    :: a
-        }
   deriving Show
 type ArgumentSpan = Argument SrcSpan
 
@@ -288,7 +288,7 @@ instance PrettyShow (BodyStmt a) where
                         lstring idn_str idn
                         string " : " >> pshow typ
                 FunctionDef args expr _ -> do
-                        pshows (string " ") args
+                        pshow args
                         string " = " >> pshow expr
                 OperatorDef idn fx mint _ -> do
                         string "operator " >> lstring idn_str idn >> string " "
@@ -355,9 +355,9 @@ instance PrettyShow (TypeBind a) where
 
 instance PrettyShow (Argument a) where
         pshow arg = case arg of
-                Binding idn _               -> lstring idn_str idn
-                DontCare _                  -> string "_"
-                ParenthesizedBinding args _ -> string "(" >> pshows (string " ") args >> string ")"
+                VarBinding idn _    -> string idn
+                DontCare _          -> string "_"
+                ApplyBinding args _ -> string "(" >> pshows (string " ") args >> string ")"
 
 instance PrettyShow (ImplicitBinding a) where
         pshow (ImplicitBind idn expr _) = lstring idn_str idn >> string " = " >> pshow expr
