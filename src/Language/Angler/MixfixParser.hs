@@ -246,7 +246,7 @@ instance ShowToken a => ShowToken [a] where
         showToken = show
 
 satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpP ExprSpan
-satisfy' = token nextPos
+satisfy' g = token nextPos g >>= handleExprSpan
     where
         nextPos :: Int -> SourcePos -> ExprSpan -> SourcePos
         nextPos _tab p x = (setName . setLine . setColumn) p
@@ -259,6 +259,38 @@ satisfy' = token nextPos
                 setLine = flip setSourceLine (view spn_sline xSpan)
                 setColumn :: SourcePos -> SourcePos
                 setColumn = flip setSourceColumn (view spn_scol xSpan)
+        -- How to handle any specific expression
+        handleExprSpan :: ExprSpan -> OpP ExprSpan
+        handleExprSpan expr = case expr of
+                Var _ _ -> return expr
+                Lit _ _ -> return expr
+                Apply xs _ -> do
+                        input <- getInput
+                        setInput (toList xs)
+                        x' <- generateOpP
+                        setInput input
+                        return x'
+                Lambda arg x an -> do
+                        arg' <- lift (mixfixArgument arg)
+                        x'   <- lift (mixfixExpression x)
+                        return (Lambda arg' x' an)
+                Let body x an -> do
+                        body' <- lift (mixfixBody body)
+                        x'    <- lift (mixfixExpression x)
+                        return (Let body' x' an)
+                Forall typs x an -> do
+                        typs' <- lift (mapM mixfixTypeBind typs)
+                        x'    <- lift (mixfixExpression x)
+                        return (Forall typs' x' an)
+                Exists typ x an -> do
+                        typ' <- lift (mixfixTypeBind typ)
+                        x'   <- lift (mixfixExpression x)
+                        return (Exists typ' x' an)
+                Select typ an -> do
+                        typ' <- lift (mixfixTypeBind typ)
+                        return (Select typ' an)
+                ImplicitExpr xs an ->
+                        mapMOf (impl_exprs.traverse) (lift . mixfixImplicit) expr
 
 satisfy :: (ExprSpan -> Bool) -> OpP ExprSpan
 satisfy g = satisfy' testExpr
@@ -322,7 +354,7 @@ generateOpP = topOpP <* eof
                 basicToken = try obviousToken <|> closedOpP
                     where
                         obviousToken :: OpP ExprSpan
-                        obviousToken = precTable >>= satisfy' . testExpr >>= retake
+                        obviousToken = precTable >>= satisfy' . testExpr
                             where
                                 testExpr :: PrecedenceTable -> ExprSpan -> Either [Message] ExprSpan
                                 testExpr prec x = case x of
@@ -333,38 +365,6 @@ generateOpP = topOpP <* eof
                                         _ -> Right x
                                 parts :: PrecedenceTable -> [String]
                                 parts = toListOf (traverse.traverse.traverse.traverse._Just)
-                                retake :: ExprSpan -> OpP ExprSpan
-                                retake expr = case expr of
-                                        Var _ _ -> return expr
-                                        Lit _ _ -> return expr
-                                        Apply xs _ -> do
-                                                input <- getInput
-                                                setInput (toList xs)
-                                                x' <- generateOpP
-                                                setInput input
-                                                return x'
-                                        Lambda arg x an -> do
-                                                arg' <- lift (mixfixArgument arg)
-                                                x'   <- lift (mixfixExpression x)
-                                                return (Lambda arg' x' an)
-                                        Let body x an -> do
-                                                body' <- lift (mixfixBody body)
-                                                x'    <- lift (mixfixExpression x)
-                                                return (Let body' x' an)
-                                        Forall typs x an -> do
-                                                typs' <- lift (mapM mixfixTypeBind typs)
-                                                x'    <- lift (mixfixExpression x)
-                                                return (Forall typs' x' an)
-                                        Exists typ x an -> do
-                                                typ' <- lift (mixfixTypeBind typ)
-                                                x'   <- lift (mixfixExpression x)
-                                                return (Exists typ' x' an)
-                                        Select typ an -> do
-                                                typ' <- lift (mixfixTypeBind typ)
-                                                return (Select typ' an)
-                                        ImplicitExpr xs an ->
-                                                mapMOf (impl_exprs.traverse) (lift . mixfixImplicit) expr
-
                 closedOpP :: OpP ExprSpan
                 closedOpP = do
                         closedOps <- concatMap (searchOps (Closedfix ())) <$> precTable
