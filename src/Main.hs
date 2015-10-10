@@ -3,6 +3,7 @@ module Main where
 import           Language.Angler.AST
 import           Language.Angler.Error
 import           Language.Angler.Parser.Parser (lexProgram, parseProgram)
+import           Language.Angler.Parser.Token  (Token, prettyShowTokens)
 import           Language.Angler.Monad
 import           Language.Angler.MixfixParser  (parseMixfix)
 import           Language.Angler.Options
@@ -15,6 +16,7 @@ import           PrettyShow
 import           Control.Lens
 import           Control.Monad                 (forM, unless, when)
 
+import           Data.Default                  (Default(..))
 import           Data.Foldable                 (toList)
 
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
@@ -41,11 +43,11 @@ main = do
 
         (filepath, handle) <- case (nonOptions, view opt_stdin options) of
                 ([ f ], False) -> do
-                        h <- openModule f ((showError . IOError . OpenModule) f)
+                        h <- openModule f ((pshowError . IOError . OpenModule) f)
                         return (f, h)
                 ([ ]  , True ) -> return ("<stdin>", stdin)
-                ([ ]  , False) -> showError (IOError NoModules)
-                (_ : _, _    ) -> showError (IOError TooManyModules)
+                ([ ]  , False) -> pshowError (IOError NoModules)
+                (_ : _, _    ) -> pshowError (IOError TooManyModules)
 
         (table, ast) <- readModule options filepath handle
         return ()
@@ -62,28 +64,33 @@ readModule options filepath handle = do
         input <- hGetContents handle
         let loc = startLoc filepath
 
-        when (view opt_tokens options) $ do
+        when (view opt_tokens options || view opt_verbose options) $ do
                 putStr "\n\n***** lexer\n\n"
                 case lexProgram input loc of
-                        Right (ts,_) -> mapM_ print ts
+                        Right (ts,_) -> putStrLn (showTokens ts)
+                            where
+                                showTokens :: [Located Token] -> String
+                                showTokens = prettyShowTokens . fmap (view loc_insd)
                         Left  _err   -> return ()
+
 
         ast <- case parseProgram input loc of
                 Right (ast,ws) -> mapM_ print ws >> return ast
-                Left  err      -> showError err
+                Left  err      -> pshowError err
 
         -- imprtsTables <- readImports opts ast
 
-        when (view opt_ast options) $ do
+        when (view opt_ast options || view opt_verbose options) $ do
                 putStr "\n\n***** parser\n\n"
                 putStrLn (prettyShow ast)
 
         ast' <- case parseMixfix ast of
                 Right ast' -> return ast'
-                Left  err  -> showErrors err >> return ast
+                Left  err  -> pshowErrors err >> return ast
 
-        putStr "\n\n***** after Mixfix\n\n"
-        putStrLn (prettyShow ast')
+        when (view opt_mixfix options || view opt_verbose options) $ do
+                putStr "\n\n***** after mixfix parser\n\n"
+                putStrLn (prettyShow ast')
 
         return (ST.empty, ast)
     {-where
@@ -98,7 +105,7 @@ readModule options filepath handle = do
 
                 let exportsErrors = filter (not . flip elem tableIm) (maybe [] toList mfids)
                 putStr "importing not exported functions: " >> print exportsErrors
-                -- showErrorsUnlessNull (fmap (IOError . ImportingNoExport) exportsErrors)
+                -- pshowErrorsUnlessNull (fmap (IOError . ImportingNoExport) exportsErrors)
 
                 let tableAs = mapKeys (getAs as++) tableIm
 
@@ -114,7 +121,7 @@ readModule options filepath handle = do
                 getAs = maybe "" (view (idn_str.to (++".")))
 
                 tryReadFile :: Foldable f => FilePath -> f FilePath -> IO Handle
-                tryReadFile path = foldr go ((showError . IOError . OpenModule) path)
+                tryReadFile path = foldr go ((pshowError . IOError . OpenModule) path)
                     where
                         go :: FilePath -> IO Handle -> IO Handle
                         go dir = openModule (dir </> path)
@@ -137,14 +144,14 @@ strErrors = strError . concat
 strErrorsUnlessNull :: Foldable f => f String -> IO ()
 strErrorsUnlessNull es = unless (null es) (strErrors es)
 
-showError :: Show s => s -> IO a
-showError = strError . show
+pshowError :: PrettyShow s => s -> IO a
+pshowError = strError . prettyShow
 
-showErrors :: (Functor f, Foldable f, Show s) => f s -> IO a
-showErrors = strErrors . fmap ((++"\n") . show)
+pshowErrors :: (Functor f, Foldable f, PrettyShow s) => f s -> IO a
+pshowErrors = strErrors . fmap ((++"\n") . prettyShow)
 
-showErrorsUnlessNull :: (Functor f, Foldable f, Show s) => f s -> IO ()
-showErrorsUnlessNull = strErrorsUnlessNull . fmap ((++"\n") . show)
+pshowErrorsUnlessNull :: (Functor f, Foldable f, PrettyShow s) => f s -> IO ()
+pshowErrorsUnlessNull = strErrorsUnlessNull . fmap ((++"\n") . prettyShow)
 
 openModule :: FilePath -> IO Handle -> IO Handle
 openModule path act = print path >> doesFileExist path >>= \ans ->
