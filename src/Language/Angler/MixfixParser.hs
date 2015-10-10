@@ -309,9 +309,9 @@ generateOpP = topOpP <* eof
             where
                 -- This tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
-                -- with 'if if a then b else c' it parses 'if_then_else_ (if a) b c'
+                -- with `if if a then b else c` it parses `if_then_else_ (if a) b c`
                 -- instead of giving a parse error
-                -- This behaviour may or may not be recommended
+                -- This behaviour may or may not be desired
                 cleverTokens :: OpP [ExprSpan]
                 cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
 
@@ -328,7 +328,7 @@ generateOpP = topOpP <* eof
                                 testExpr prec x = case x of
                                         Var name _ -> if name `notElem` (parts prec)
                                                 then Right x
-                                                else Left [ Unexpected ("operator part " ++ showToken x)
+                                                else Left [ Unexpected ("operator part " ++ name)
                                                           , Expected "identifier" ]
                                         _ -> Right x
                                 parts :: PrecedenceTable -> [String]
