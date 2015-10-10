@@ -2,7 +2,7 @@
 
 module PrettyShow
     ( PrettyShow(pshow), PrettyShowed
-    , prettyShow, prettyShowIndent
+    , prettyShow, runPrettyShow, prettyShowIndent
 
     , pshows
     , string, lstring
@@ -30,13 +30,16 @@ class PrettyShow a where
         pshow :: a -> PrettyShowed
 
 prettyShow :: PrettyShow a => a -> String
-prettyShow = prettyShowIndent 0 "    "
+prettyShow = runPrettyShow . pshow
 
-prettyShowIndent :: PrettyShow a
-                 => Indentation         -- Starting indentation level
+runPrettyShow :: PrettyShowed -> String
+runPrettyShow = prettyShowIndent 0 "    "
+
+prettyShowIndent :: Indentation         -- Starting indentation level
                  -> String              -- Indentation string
-                 -> a -> String
-prettyShowIndent n str = showLines . view ps_lines . flip execState initialST . pshow
+                 -> PrettyShowed
+                 -> String
+prettyShowIndent n str = showLines . view ps_lines . flip execState initialST
     where
         showLines :: [(Indentation, String)] -> String
         showLines = concatMap (\(ind, s) -> tabs ind ++ s ++ "\n") . reverse

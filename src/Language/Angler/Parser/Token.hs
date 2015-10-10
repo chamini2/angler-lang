@@ -124,3 +124,6 @@ instance PrettyShow Token where
                 TkVRCurly          -> line >> string "^}"
                 TkVSemicolon       -> string "^;" >> line
                 _                  -> string (show tk)
+
+prettyShowTokens :: Foldable f => f Token -> String
+prettyShowTokens = runPrettyShow . pshows (string " ")

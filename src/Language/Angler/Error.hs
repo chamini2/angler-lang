@@ -1,5 +1,7 @@
 module Language.Angler.Error where
 
+import           PrettyShow
+
 import           Prelude hiding (IOError)
 
 data Warning
@@ -26,6 +28,9 @@ instance Show Error where
                 CheckError ce -> "ERROR: " ++ show ce
                 IOError   ioe -> "IO ERROR: " ++ show ioe
 
+instance PrettyShow Error where
+        pshow = string . show
+
 data LexError
   = LErr                        String
   | LErrUnexpectedCharacter     Char
@@ -36,6 +41,9 @@ instance Show LexError where
                 LErr                  str -> str
                 LErrUnexpectedCharacter c -> "unexpected character " ++ [c]
                 LErrUnterminatedComment   -> "unterminated comment"
+
+instance PrettyShow LexError where
+        pshow = string . show
 
 data ParseError
   = PErr                        String
@@ -51,6 +59,9 @@ instance Show ParseError where
                 PErrEmptyLayoutAfter w -> "empty layout after " ++ w
                 PErrExpectingIn    e c -> "expected " ++ e ++ " in " ++ c
                 PErrNoIn           e c -> "no " ++ e ++ " in " ++ c
+
+instance PrettyShow ParseError where
+        pshow = string . show
 
 data CheckError
   = CErr                        String
@@ -69,6 +80,9 @@ instance Show CheckError where
                 CErrExpected              tk -> "in mixfix parser, expected " ++ tk
                 CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ tk
 
+instance PrettyShow CheckError where
+        pshow = string . show
+
 data IOError
   = IOErr                       String
 
@@ -80,3 +94,6 @@ data IOError
   | TooManyModules
   | NoModules
   deriving Show
+
+instance PrettyShow IOError where
+        pshow = string . show
