@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Language.Angler.SrcLoc
         ( SrcLoc(..)
         , startLoc
@@ -9,11 +11,11 @@ module Language.Angler.SrcLoc
         , srcSpanSLoc
         , srcSpanELoc
 
-        , srcSpanFile
-        , srcSpanSLine
-        , srcSpanSCol
-        , srcSpanELine
-        , srcSpanECol
+        , spn_file  -- , srcSpanFile
+        , spn_sline -- , srcSpanSLine
+        , spn_scol  -- , srcSpanSCol
+        , spn_eline -- , srcSpanELine
+        , spn_ecol  -- , srcSpanECol
 
         , Located(..)
         , loc_span
@@ -22,7 +24,7 @@ module Language.Angler.SrcLoc
         , srcLocatedSpan
         ) where
 
-import           Language.Angler.Error
+import           PrettyShow
 
 import           Control.Lens
 import           Data.List    (intercalate)
@@ -73,13 +75,82 @@ data SrcSpan
         -- , srcSpanELine  :: Int
         -- , srcSpanECol   :: Int
         -- }
+        -----
+
+-- data Operator
+--   = Operator
+--         { _op_idn       :: String
+--         , _op_fix       :: Fixity ()
+--         , _op_prec      :: Maybe Int
+--         }
+--   deriving Show
+--
+-- -- Lens for accessing OperatorParts as if it was a field of Operator
+-- op_repr :: Lens' Operator OperatorParts
+-- op_repr op_fn (Operator idn fix prec) = wrap <$> op_fn (strOp idn)
+--     where
+--         wrap :: OperatorParts -> Operator
+--         wrap prts = Operator (opStr prts) fix prec
+
+        -----
+
+spn_file :: Lens' SrcSpan FilePath
+spn_file spn_fn spn = wrap <$> spn_fn (srcSpanFile spn)
+    where
+        wrap :: FilePath -> SrcSpan
+        wrap f = case spn of
+                SrcSpanNoInfo                  -> SrcSpanNoInfo
+                SrcSpanPoint     _ l  c        -> SrcSpanPoint     f l  c
+                SrcSpanOneLine   _ l  c1 c2    -> SrcSpanOneLine   f l  c1 c2
+                SrcSpanMultiline _ l1 c1 l2 c2 -> SrcSpanMultiline f l1 c1 l2 c2
+
+spn_sline :: Lens' SrcSpan Int
+spn_sline spn_fn spn = wrap <$> spn_fn (srcSpanSLine spn)
+    where
+        wrap :: Int -> SrcSpan
+        wrap line = case spn of
+                SrcSpanNoInfo                 -> SrcSpanNoInfo
+                SrcSpanPoint     f _ c        -> SrcSpanPoint     f line c
+                SrcSpanOneLine   f _ c1 c2    -> SrcSpanOneLine   f line c1 c2
+                SrcSpanMultiline f _ c1 l2 c2 -> SrcSpanMultiline f line c1 l2 c2
+
+spn_scol :: Lens' SrcSpan Int
+spn_scol spn_fn spn = wrap <$> spn_fn (srcSpanSCol spn)
+    where
+        wrap :: Int -> SrcSpan
+        wrap col = case spn of
+                SrcSpanNoInfo                 -> SrcSpanNoInfo
+                SrcSpanPoint     f l  _       -> SrcSpanPoint     f l  col
+                SrcSpanOneLine   f l  _ c2    -> SrcSpanOneLine   f l  col c2
+                SrcSpanMultiline f l1 _ l2 c2 -> SrcSpanMultiline f l1 col l2 c2
+
+spn_eline :: Lens' SrcSpan Int
+spn_eline spn_fn spn = wrap <$> spn_fn (srcSpanELine spn)
+    where
+        wrap :: Int -> SrcSpan
+        wrap line = case spn of
+                SrcSpanNoInfo                  -> SrcSpanNoInfo
+                SrcSpanPoint     f _  c        -> SrcSpanPoint     f line  c
+                SrcSpanOneLine   f _  c1 c2    -> SrcSpanOneLine   f line  c1 c2
+                SrcSpanMultiline f l1 c1 _  c2 -> SrcSpanMultiline f l1    c1 line  c2
+
+spn_ecol :: Lens' SrcSpan Int
+spn_ecol spn_fn spn = wrap <$> spn_fn (srcSpanECol spn)
+    where
+        wrap :: Int -> SrcSpan
+        wrap col = case spn of
+                SrcSpanNoInfo                 -> SrcSpanNoInfo
+                SrcSpanPoint     f l  _       -> SrcSpanPoint     f l  col
+                SrcSpanOneLine   f l  c1 _    -> SrcSpanOneLine   f l  c1 col
+                SrcSpanMultiline f l1 c1 l2 _ -> SrcSpanMultiline f l1 c1 l2 col
+
 
 instance Show SrcSpan where
         show spn = case spn of
                 SrcSpanNoInfo                  -> "<no location info>:"
-                SrcSpanPoint f l c             -> locationSeparator (f : fmap show [l, c])
-                SrcSpanOneLine f l c1 c2       -> locationSeparator (f : fmap show [l, c1, c2])
-                SrcSpanMultiline f l1 c1 l2 c2 -> locationSeparator (f : fmap show [l1, c1, l2, c2])
+                SrcSpanPoint f l c             -> locationSeparator (f : fmap show [(l, c)])
+                SrcSpanOneLine f l c1 c2       -> locationSeparator (f : fmap show [(l, c1), (l, c2)])
+                SrcSpanMultiline f l1 c1 l2 c2 -> locationSeparator (f : fmap show [(l1, c1), (l2, c2)])
 
 srcSpanSLoc :: SrcSpan -> SrcLoc
 srcSpanSLoc span = case span of
@@ -117,28 +188,28 @@ srcSpanSLine :: SrcSpan -> Int
 srcSpanSLine span = case span of
         SrcSpanNoInfo                      -> error "SrcLoc.srcSpanSLine: SrcSpanNoInfo"
         SrcSpanPoint     _f l  _c          -> l
-        SrcSpanOneLine   _f l  _sc _ec     -> l
+        SrcSpanOneLine   _f l  _sc     _ec -> l
         SrcSpanMultiline _f sl _sc _el _ec -> sl
 
 srcSpanSCol :: SrcSpan -> Int
 srcSpanSCol span = case span of
         SrcSpanNoInfo                      -> error "SrcLoc.srcSpanSCol: SrcSpanNoInfo"
         SrcSpanPoint     _f _l  c          -> c
-        SrcSpanOneLine   _f _l  sc _ec     -> sc
+        SrcSpanOneLine   _f _l  sc     _ec -> sc
         SrcSpanMultiline _f _sl sc _el _ec -> sc
 
 srcSpanELine :: SrcSpan -> Int
 srcSpanELine span = case span of
-        SrcSpanNoInfo                       -> error "SrcLoc.srcSpanELine: SrcSpanNoInfo"
-        SrcSpanPoint     _f l   _c          -> l
-        SrcSpanOneLine   _f l   _sc _ec     -> l
-        SrcSpanMultiline _f _sl _sc el  _ec -> el
+        SrcSpanNoInfo                      -> error "SrcLoc.srcSpanELine: SrcSpanNoInfo"
+        SrcSpanPoint     _f l   _c         -> l
+        SrcSpanOneLine   _f l   _sc    _ec -> l
+        SrcSpanMultiline _f _sl _sc el _ec -> el
 
 srcSpanECol :: SrcSpan -> Int
 srcSpanECol span = case span of
         SrcSpanNoInfo                      -> error "SrcLoc.srcSpanECol: SrcSpanNoInfo"
         SrcSpanPoint     _f _l  c          -> c
-        SrcSpanOneLine   _f _l  _sc ec     -> ec
+        SrcSpanOneLine   _f _l  _sc     ec -> ec
         SrcSpanMultiline _f _sl _sc _el ec -> ec
 
 data Located e
@@ -150,12 +221,19 @@ data Located e
 makeLenses ''Located
 
 instance Show e => Show (Located e) where
-        show (Loc spn e) = show spn ++ "\n\t" ++ show e ++ "\n"
+        show (Loc spn e) = show spn ++ "\t\t" ++ show e
+
+instance PrettyShow e => PrettyShow (Located e) where
+        pshow (Loc spn e) = do
+                string (show spn)
+                raise >> line
+                pshow e
+                lower
 
 srcSpanSpan :: SrcSpan -> SrcSpan -> SrcSpan
 srcSpanSpan s e = case (s,e) of
-        (SrcSpanNoInfo, _            ) -> e
-        (_            , SrcSpanNoInfo) -> s
+        (SrcSpanNoInfo, e            ) -> e
+        (s            , SrcSpanNoInfo) -> s
         _                              -> srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan

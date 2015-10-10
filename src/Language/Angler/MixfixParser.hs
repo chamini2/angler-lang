@@ -232,9 +232,9 @@ runOpP :: OpP a -> SrcSpan -> [ExprSpan] -> Mixfix (Either ParseError a)
 runOpP act spn = runParserT (setPosition pos >> act) filepath
     where
         filepath :: FilePath
-        filepath = srcSpanFile spn
+        filepath = view spn_file spn
         pos :: SourcePos
-        pos = newPos filepath (srcSpanSLine spn) (srcSpanSCol spn)
+        pos = newPos filepath (view spn_sline spn) (view spn_scol spn)
 
 instance Show a => ShowToken (Expression a) where
         showToken = trim . prettyShow
@@ -254,11 +254,11 @@ satisfy' = token nextPos
                 xSpan :: SrcSpan
                 xSpan = view exp_annot x
                 setName :: SourcePos -> SourcePos
-                setName = flip setSourceName (srcSpanFile xSpan)
+                setName = flip setSourceName (view spn_file xSpan)
                 setLine :: SourcePos -> SourcePos
-                setLine = flip setSourceLine (srcSpanSLine xSpan)
+                setLine = flip setSourceLine (view spn_sline xSpan)
                 setColumn :: SourcePos -> SourcePos
-                setColumn = flip setSourceColumn (srcSpanSCol xSpan)
+                setColumn = flip setSourceColumn (view spn_scol xSpan)
 
 satisfy :: (ExprSpan -> Bool) -> OpP ExprSpan
 satisfy g = satisfy' testExpr

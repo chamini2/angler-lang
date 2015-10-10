@@ -79,7 +79,7 @@ instance Default LPState where
 getOffside :: SrcSpan -> LP Ordering
 getOffside span = do
         stk <- use lp_context
-        let indent = srcSpanSCol span
+        let indent = view spn_scol span
         return $ case stk of
                 Layout indent' : _ -> compare indent indent'
                 _                  -> GT
