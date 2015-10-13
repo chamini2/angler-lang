@@ -1,5 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.Angler.MixfixParser
@@ -42,6 +43,15 @@ import           Text.Megaparsec.Prim        (getInput, setInput,
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 import           Prelude                     hiding (lookup)
+
+--------------------------------------------------------------------------------
+-- Contraint Kind
+
+type ConSnoc f a =
+  ( Alternative f
+  , Cons (f a) (f a) a a
+  , Snoc (f a) (f a) a a
+  )
 
 --------------------------------------------------------------------------------
 -- Operator handling
@@ -462,10 +472,7 @@ generateOpP = topOpP <* eof
                                 leftOps :: [ OperatorParts ]
                                 leftOps = searchOps (Infix LeftAssoc ()) lvl
 
-        closedPartOpP :: (Alternative f,
-                          Cons (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan,
-                          Snoc (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan)
-                      => OperatorParts -> OpP (f ExprSpan, SrcSpan, String)
+        closedPartOpP :: ConSnoc f ExprSpan => OperatorParts -> OpP (f ExprSpan, SrcSpan, String)
         closedPartOpP prts = do
                 xs <- foldr go (pure empty) (closedPart prts)
                 return (xs, xsSpan xs, opStr prts)
@@ -481,8 +488,5 @@ generateOpP = topOpP <* eof
                     where
                         clean = dropWhile isNothing
 
-        xsSpan :: (Alternative f,
-                   Cons (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan,
-                   Snoc (f ExprSpan) (f ExprSpan) ExprSpan ExprSpan)
-               => f ExprSpan -> SrcSpan
+        xsSpan :: ConSnoc f a => f ExprSpan -> SrcSpan
         xsSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)

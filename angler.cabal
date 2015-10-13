@@ -33,8 +33,12 @@ executable angler
   other-modules:          Language.Angler.Parser.Lexer
                         , Language.Angler.Parser.Parser
 
-  default-extensions:   TemplateHaskell
-  other-extensions:     RankNTypes, FlexibleContexts
+  default-extensions:     TemplateHaskell
+
+  other-extensions:       RankNTypes
+                        , FlexibleContexts
+                        , ConstraintKinds
+                        , MultiParamTypeClasses
 
   build-depends:          base >=4.8 && <4.9
                                 -- GHC 7.10
