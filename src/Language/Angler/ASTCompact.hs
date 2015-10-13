@@ -17,7 +17,6 @@ data BodyStmt a
   = Function
         { _fun_idn      :: Identifier a
         , _fun_type     :: Expression a
-        , _fun_args     :: Seq (Argument a)
         , _fun_expr     :: Expression a
         , _stm_annot    :: a
         }
@@ -56,7 +55,8 @@ data Expression a
         , _exp_annot    :: a
         }
   | Lambda
-        { _lam_arg      :: Argument a
+        { _lam_arg      :: String
+        , _lam_arg_type :: Expression a
         , _lam_expr     :: Expression a
         , _exp_annot    :: a
         }
