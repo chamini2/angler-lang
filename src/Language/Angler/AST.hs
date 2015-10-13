@@ -352,7 +352,7 @@ instance PrettyShow (Expression a) where
                                 Select typ _ -> string "select " >> pshow typ
                                 ImplicitExpr ims _ ->
                                         string "{" >> pshows (string ", ") ims >> string "}"
-                        pshows' :: (Foldable f) => String -> f (Expression a) -> PrettyShowed
+                        pshows' :: Foldable f => String -> f (Expression a) -> PrettyShowed
                         pshows' str exprs = case toList exprs of
                                 p : ps -> pshow' True p >> mapM_ go ps
                                 _      -> return ()
@@ -391,7 +391,7 @@ instance PrettyShow (Argument a) where
                                 VarBinding idn _    -> string idn
                                 DontCare _          -> string "_"
                                 ApplyBinding args _ -> pshows' " " args
-                        pshows' :: (Foldable f) => String -> f (Argument a) -> PrettyShowed
+                        pshows' :: Foldable f => String -> f (Argument a) -> PrettyShowed
                         pshows' str args = case toList args of
                                 p : ps -> pshow' True p >> mapM_ go ps
                                 _      -> return ()
