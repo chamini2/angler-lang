@@ -37,7 +37,8 @@ import           Text.Megaparsec.Error       (ParseError, Message(..),
                                               errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos, setSourceName,
                                               setSourceLine, setSourceColumn)
-import           Text.Megaparsec.Prim        (getInput, setInput, setPosition)
+import           Text.Megaparsec.Prim        (getInput, setInput,
+                                              getPosition, setPosition)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 import           Prelude                     hiding (lookup)
@@ -112,15 +113,15 @@ scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
                 go' = if opPrec < mprec
                         then cons newLvl
                         else over _head addOp
+                    where
+                        newLvl :: PrecedenceLevel
+                        newLvl = uncurry Map.singleton opInfo
 
-                newLvl :: PrecedenceLevel
-                newLvl = uncurry Map.singleton opInfo
+                        addOp :: PrecedenceLevel -> PrecedenceLevel
+                        addOp = uncurry (Map.insertWith (++)) opInfo
 
-                addOp :: PrecedenceLevel -> PrecedenceLevel
-                addOp = uncurry (Map.insertWith (++)) opInfo
-
-                opInfo :: (Fixity (), [OperatorParts])
-                opInfo = (view op_fix op, [view op_repr op])
+                        opInfo :: (Fixity (), [OperatorParts])
+                        opInfo = (view op_fix op, [view op_repr op])
 
 --------------------------------------------------------------------------------
 -- Monad
@@ -208,7 +209,7 @@ mixfixArgument arg = do
         argExpr :: ArgumentSpan -> ExpressionSpan
         argExpr arg' = case arg' of
                 VarBinding idn an  -> Var idn an
-                DontCare an        -> Lit (error "mixfixArgument: DontCare") an
+                DontCare an        -> Lit (error "MixfixParser.mixfixArgument: DontCare") an
                 ApplyBinding xs an -> Apply (fmap argExpr xs) an
         exprArg :: ExpressionSpan -> ArgumentSpan
         exprArg expr = case expr of
@@ -217,7 +218,7 @@ mixfixArgument arg = do
                         _   -> ApplyBinding (fmap exprArg xs) an
                 Var idn an -> VarBinding idn an
                 Lit _   an -> DontCare an
-                _          -> error "mixfixArgument: impossible case"
+                _          -> error "MixfixParser.mixfixArgument: impossible case"
 
 mixfixImplicit :: ImplicitBindingSpan -> Mixfix ImplicitBindingSpan
 mixfixImplicit = mapMOf impl_expr mixfixExpression
@@ -264,33 +265,52 @@ satisfy' g = token nextPos g >>= handleExprSpan
         handleExprSpan expr = case expr of
                 Var _ _ -> return expr
                 Lit _ _ -> return expr
-                Apply xs _ -> do
+                Apply xs an -> do
                         input <- getInput
+                        pos   <- getPosition
+                        let file = view spn_file  an
+                            line = view spn_sline an
+                            col  = view spn_scol  an
                         setInput (toList xs)
+                        setPosition (newPos file line col)
                         x' <- generateOpP
                         setInput input
+                        setPosition pos
                         return x'
-                Lambda arg x an -> do
-                        arg' <- lift (mixfixArgument arg)
-                        x'   <- lift (mixfixExpression x)
-                        return (Lambda arg' x' an)
-                Let body x an -> do
-                        body' <- lift (mixfixBody body)
-                        x'    <- lift (mixfixExpression x)
-                        return (Let body' x' an)
-                Forall typs x an -> do
-                        typs' <- lift (mapM mixfixTypeBind typs)
-                        x'    <- lift (mixfixExpression x)
-                        return (Forall typs' x' an)
-                Exists typ x an -> do
-                        typ' <- lift (mixfixTypeBind typ)
-                        x'   <- lift (mixfixExpression x)
-                        return (Exists typ' x' an)
-                Select typ an -> do
-                        typ' <- lift (mixfixTypeBind typ)
-                        return (Select typ' an)
-                ImplicitExpr xs an ->
-                        mapMOf (impl_exprs.traverse) (lift . mixfixImplicit) expr
+                Lambda {} -> lift $ do
+                        expr' <- mapMOf lam_arg mixfixArgument expr
+                        mapMOf lam_expr mixfixExpression expr'
+                -- Lambda arg x an -> do
+                --         arg' <- lift (mixfixArgument arg)
+                --         x'   <- lift (mixfixExpression x)
+                --         return (Lambda arg' x' an)
+                Let {} -> lift $ do
+                        expr' <- mapMOf let_body mixfixBody expr
+                        mapMOf let_expr mixfixExpression expr'
+                -- Let body x an -> do
+                --         body' <- lift (mixfixBody body)
+                --         x'    <- lift (mixfixExpression x)
+                --         return (Let body' x' an)
+                Forall {} -> lift $ do
+                        expr' <- mapMOf (fall_typs.traverse) mixfixTypeBind expr
+                        mapMOf fall_expr mixfixExpression expr'
+                -- Forall typs x an -> do
+                --         typs' <- lift (mapM mixfixTypeBind typs)
+                --         x'    <- lift (mixfixExpression x)
+                --         return (Forall typs' x' an)
+                Exists {} -> lift $ do
+                        expr' <- mapMOf exst_type mixfixTypeBind expr
+                        mapMOf exst_expr mixfixExpression expr'
+                -- Exists typ x an -> do
+                --         typ' <- lift (mixfixTypeBind typ)
+                --         x'   <- lift (mixfixExpression x)
+                --         return (Exists typ' x' an)
+                Select {} -> lift (mapMOf slct_type mixfixTypeBind expr)
+                -- Select typ an -> do
+                --         typ' <- lift (mixfixTypeBind typ)
+                --         return (Select typ' an)
+                ImplicitExpr {} ->
+                        lift (mapMOf (impl_exprs.traverse) mixfixImplicit expr)
 
 satisfy :: (ExprSpan -> Bool) -> OpP ExprSpan
 satisfy g = satisfy' testExpr
