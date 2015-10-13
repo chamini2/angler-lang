@@ -46,7 +46,7 @@ runPrettyShowIndent :: Indentation      -- starting indentation level
                     -> String           -- indentation string
                     -> PrettyShowed
                     -> String
-runPrettyShowIndent n str = showLines . view ps_lines . flip execState initialST
+runPrettyShowIndent n str = views ps_lines showLines . flip execState initialST
     where
         showLines :: [(Indentation, String)] -> String
         showLines = concatMap (\(ind, s) -> tabs ind ++ s ++ "\n") . reverse
@@ -69,7 +69,7 @@ string :: String -> PrettyShowed
 string str = ps_lines._head._2 %= (++ str)
 
 lstring :: Lens' s String -> s -> PrettyShowed
-lstring lns = string . view lns
+lstring lns = views lns string
 
 line :: PrettyShowed
 line = use ps_level >>= \n -> ps_lines %= cons (n, "")

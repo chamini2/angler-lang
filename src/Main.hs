@@ -118,7 +118,7 @@ readModule options filepath handle = do
                 checkIm mfs k = maybe True (k `P.elem`) mfs
 
                 getAs :: Maybe IdentifierSpan -> String
-                getAs = maybe "" (view (idn_str.to (++".")))
+                getAs = maybe "" (views idn_str (++"."))
 
                 tryReadFile :: Foldable f => FilePath -> f FilePath -> IO Handle
                 tryReadFile path = foldr go ((pshowError . IOError . OpenModule) path)

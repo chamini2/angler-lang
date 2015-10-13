@@ -77,21 +77,6 @@ data SrcSpan
         -- }
         -----
 
--- data Operator
---   = Operator
---         { _op_idn       :: String
---         , _op_fix       :: Fixity ()
---         , _op_prec      :: Maybe Int
---         }
---   deriving Show
---
--- -- Lens for accessing OperatorParts as if it was a field of Operator
--- op_repr :: Lens' Operator OperatorParts
--- op_repr op_fn (Operator idn fix prec) = wrap <$> op_fn (strOp idn)
---     where
---         wrap :: OperatorParts -> Operator
---         wrap prts = Operator (opStr prts) fix prec
-
         -----
 
 spn_file :: Lens' SrcSpan FilePath
@@ -108,11 +93,11 @@ spn_sline :: Lens' SrcSpan Int
 spn_sline spn_fn spn = wrap <$> spn_fn (srcSpanSLine spn)
     where
         wrap :: Int -> SrcSpan
-        wrap line = case spn of
+        wrap lin = case spn of
                 SrcSpanNoInfo                 -> SrcSpanNoInfo
-                SrcSpanPoint     f _ c        -> SrcSpanPoint     f line c
-                SrcSpanOneLine   f _ c1 c2    -> SrcSpanOneLine   f line c1 c2
-                SrcSpanMultiline f _ c1 l2 c2 -> SrcSpanMultiline f line c1 l2 c2
+                SrcSpanPoint     f _ c        -> SrcSpanPoint     f lin c
+                SrcSpanOneLine   f _ c1 c2    -> SrcSpanOneLine   f lin c1 c2
+                SrcSpanMultiline f _ c1 l2 c2 -> SrcSpanMultiline f lin c1 l2 c2
 
 spn_scol :: Lens' SrcSpan Int
 spn_scol spn_fn spn = wrap <$> spn_fn (srcSpanSCol spn)
@@ -128,11 +113,11 @@ spn_eline :: Lens' SrcSpan Int
 spn_eline spn_fn spn = wrap <$> spn_fn (srcSpanELine spn)
     where
         wrap :: Int -> SrcSpan
-        wrap line = case spn of
+        wrap lin = case spn of
                 SrcSpanNoInfo                  -> SrcSpanNoInfo
-                SrcSpanPoint     f _  c        -> SrcSpanPoint     f line  c
-                SrcSpanOneLine   f _  c1 c2    -> SrcSpanOneLine   f line  c1 c2
-                SrcSpanMultiline f l1 c1 _  c2 -> SrcSpanMultiline f l1    c1 line  c2
+                SrcSpanPoint     f _  c        -> SrcSpanPoint     f lin  c
+                SrcSpanOneLine   f _  c1 c2    -> SrcSpanOneLine   f lin  c1 c2
+                SrcSpanMultiline f l1 c1 _  c2 -> SrcSpanMultiline f l1    c1 lin  c2
 
 spn_ecol :: Lens' SrcSpan Int
 spn_ecol spn_fn spn = wrap <$> spn_fn (srcSpanECol spn)
@@ -232,8 +217,8 @@ instance PrettyShow e => PrettyShow (Located e) where
 
 srcSpanSpan :: SrcSpan -> SrcSpan -> SrcSpan
 srcSpanSpan s e = case (s,e) of
-        (SrcSpanNoInfo, e            ) -> e
-        (s            , SrcSpanNoInfo) -> s
+        (SrcSpanNoInfo, _            ) -> e
+        (_            , SrcSpanNoInfo) -> s
         _                              -> srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan

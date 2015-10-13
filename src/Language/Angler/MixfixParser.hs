@@ -17,7 +17,6 @@ import           PrettyShow
 
 import           Control.Applicative         (Alternative(..), (<|>), liftA, many)
 import           Control.Lens                hiding (op, below, parts)
-import           Control.Monad               (forM_)
 import           Control.Monad.Except        (Except, runExcept)
 import           Control.Monad.State         (StateT, runStateT)
 import           Control.Monad.Trans         (lift)
@@ -84,19 +83,19 @@ data Operator
         }
   deriving Show
 
--- Lens for accessing OperatorParts as if it was a field of Operator
-op_repr :: Lens' Operator OperatorParts
-op_repr op_fn (Operator idn fix prec) = wrap <$> op_fn (strOp idn)
-    where
-        wrap :: OperatorParts -> Operator
-        wrap prts = Operator (opStr prts) fix prec
-
 data OpPState
   = OpPState
-        { _opp_table     :: ScopedTable Operator }
+        { _opp_table    :: ScopedTable Operator }
 
 makeLenses ''Operator
 makeLenses ''OpPState
+
+-- Lens for accessing OperatorParts as if it was a field of Operator
+op_repr :: Lens' Operator OperatorParts
+op_repr op_fn op = wrap <$> views op_idn (op_fn . strOp) op
+    where
+        wrap :: OperatorParts -> Operator
+        wrap prts = set op_idn (opStr prts) op
 
 instance STScopedTable OpPState Operator where
         st_table = opp_table
@@ -190,7 +189,6 @@ mixfixExpression expr = do
                             spn  = srcLocSpan loc loc
                             errs = fmap (Loc spn . CheckError . messageCheckError) msgs
                         throwError errs
-                        return expr
                 Right x -> return x
         return (flattenExpression expr')
     where
@@ -279,10 +277,10 @@ satisfy' g = token nextPos g >>= handleExprSpan
                         input <- getInput
                         pos   <- getPosition
                         let file = view spn_file  an
-                            line = view spn_sline an
+                            lin  = view spn_sline an
                             col  = view spn_scol  an
                         setInput (toList xs)
-                        setPosition (newPos file line col)
+                        setPosition (newPos file lin col)
                         x' <- generateOpP
                         setInput input
                         setPosition pos
@@ -371,9 +369,8 @@ generateOpP = topOpP <* eof
             where
                 -- This tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
-                -- with `if if a then b else c` it parses `if_then_else_ (if a) b c`
+                -- so `if if a then b else c` is parsed `if_then_else_ (if a) b c`
                 -- instead of giving a parse error
-                -- This behaviour may or may not be desired
                 cleverTokens :: OpP [ExprSpan]
                 cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
 
@@ -488,5 +485,5 @@ generateOpP = topOpP <* eof
                     where
                         clean = dropWhile isNothing
 
-        xsSpan :: ConSnoc f a => f ExprSpan -> SrcSpan
+        xsSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
         xsSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
