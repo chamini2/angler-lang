@@ -55,9 +55,10 @@ main = do
 readModule :: Options -> FilePath -> Handle -> IO (ScopedTable (), ModuleSpan)
 readModule options filepath handle = do
         -- setting the flags for the import files
-        let opts = options & (opt_stdin  .~ False)
-                           . (opt_tokens .~ False)
-                           . (opt_ast    .~ False)
+        let imprtsOpts = options & (opt_stdin  .~ False)
+                                 . (opt_tokens .~ False)
+                                 . (opt_ast    .~ False)
+                                 . (opt_mixfix .~ False)
 
         putStrLn ("Checking module (" ++ filepath ++ ")")
 
@@ -84,13 +85,13 @@ readModule options filepath handle = do
                 putStr "\n\n***** parser\n\n"
                 putStrLn (prettyShow ast)
 
-        ast' <- case parseMixfix ast of
+        ast <- case parseMixfix ast of
                 Right ast' -> return ast'
                 Left  err  -> pshowErrors err >> return ast
 
         when (view opt_mixfix options || view opt_verbose options) $ do
                 putStr "\n\n***** after mixfix parser\n\n"
-                putStrLn (prettyShow ast')
+                putStrLn (prettyShow ast)
 
         return (ST.empty, ast)
     {-where

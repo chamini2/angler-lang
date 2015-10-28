@@ -59,7 +59,16 @@ optionDescrs =
                 "suppress all warnings"
 
         , Option ['s'] ["stdin"]         (NoArg (optBool opt_stdin True))
-                "shows the tokens recognized by the lexer"
+                "reads the program to interpret from standard input, rather than a file"
+
+        , Option []    ["stdlib"]        (NoArg (optBool opt_stdlib True))
+                "adds the standard library to the path (default)"
+
+        , Option []    ["no-stdlib"]     (NoArg (optBool opt_stdlib False))
+                "removes the standard library from the path"
+
+        , Option ['p'] ["path"]          (ReqArg optPath "PATH")
+                "adds a directory to the path"
 
         , Option ['V'] ["verbose"]       (NoArg (optBool opt_verbose True))
                 ("to show output for the several stages of interpreting, " ++
@@ -85,15 +94,6 @@ optionDescrs =
 
         , Option []    ["no-mixfix-ast"] (NoArg (optBool opt_mixfix False))
                 "avoids showing the parsed AST after passing the mixfix parser (default)"
-
-        , Option []    ["stdlib"]        (NoArg (optBool opt_stdlib True))
-                "adds the standard library to the path (default)"
-
-        , Option []    ["no-stdlib"]     (NoArg (optBool opt_stdlib False))
-                "removes the standard library from the path"
-
-        , Option ['p'] ["path"]          (ReqArg optPath "PATH")
-                "adds a directory to the path"
         ]
     where
         optBool :: Lens' Options Bool -> Bool -> Options -> IO Options
