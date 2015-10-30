@@ -50,15 +50,19 @@ data ParseError
   | PErrUnexpectedToken         String
   | PErrEmptyLayoutAfter        String
   | PErrExpectingIn             String String
+  | PErrExpectedAfter           String String
+  | PErrUnexpectedAfter         String String
   | PErrNoIn                    String String
 
 instance Show ParseError where
         show pe = case pe of
-                PErr               str -> str
-                PErrUnexpectedToken tk -> "unexpected token " ++ tk
-                PErrEmptyLayoutAfter w -> "empty layout after " ++ w
-                PErrExpectingIn    e c -> "expected " ++ e ++ " in " ++ c
-                PErrNoIn           e c -> "no " ++ e ++ " in " ++ c
+                PErr                str -> str
+                PErrUnexpectedToken  tk -> "unexpected token " ++ tk
+                PErrEmptyLayoutAfter  w -> "empty layout after " ++ w
+                PErrExpectingIn     e c -> "expected " ++ e ++ " in " ++ c
+                PErrExpectedAfter   e c -> "expected " ++ e ++ " after " ++ c
+                PErrUnexpectedAfter u c -> "unexpected " ++ u ++ " after " ++ c
+                PErrNoIn            e c -> "no " ++ e ++ " in " ++ c
 
 instance PrettyShow ParseError where
         pshow = string . show

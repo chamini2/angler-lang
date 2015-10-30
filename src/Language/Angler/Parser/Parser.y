@@ -216,9 +216,9 @@ Body :: { BodySpan }
         | Argument(FunId) '=' ExpressionWhere
                         { FunctionDef $1 $3
                             (srcSpanSpan ($1^.arg_annot) ($3^.whre_annot)) }
-        | 'operator' Id Fixity Maybe(LitInt)
-                        { OperatorDef $2 $3 ($4^?_Just.lit_int)
-                            (srcSpanSpan $1 (maybe ($3^.fix_annot) (^.lit_annot) $4)) }
+        | 'operator' Id FixityWithPrecedence
+                        { uncurry (OperatorDef $2) $3
+                            (srcSpanSpan $1 ($3^._1.fix_annot)) }
 
         -- behaviour namespace
         -- | BehaviourNamespace
@@ -270,13 +270,25 @@ Body :: { BodySpan }
                 '{^' ListSep1(TypeBindWhere, '^;') '^}'
                             { ($3, srcSpanSpan $1 $4) }
 
-        Fixity :: { FixitySpan }
-            : 'closed'      { Closedfix        $1 }
-            | 'prefix'      { Prefix           $1 }
-            | 'postfix'     { Postfix          $1 }
-            | 'infixL'      { Infix LeftAssoc  $1 }
-            | 'infixR'      { Infix RightAssoc $1 }
-            | 'infixN'      { Infix NonAssoc   $1 }
+        FixityWithPrecedence :: { (FixitySpan, Maybe Int) }
+            : NoPrecFixity  { ($1, Nothing) }
+            | PrecFixity LitInt
+                            { ($1, $2^?lit_int) }
+            -- errors
+            | PrecFixity    {% throwPError (PErrExpectedAfter "precedence" "fixity")
+                                ($1^.fix_annot) }
+            NoPrecFixity :: { FixitySpan }
+                : 'closed'      { Closedfix        $1 }
+                -- errors
+                | 'closed' LitInt
+                                {% throwPError (PErrUnexpectedAfter "precedence" "closed fixity")
+                                    (srcSpanSpan $1 ($2^.lit_annot)) }
+            PrecFixity :: { FixitySpan }
+                : 'prefix'      { Prefix           $1 }
+                | 'postfix'     { Postfix          $1 }
+                | 'infixL'      { Infix LeftAssoc  $1 }
+                | 'infixR'      { Infix RightAssoc $1 }
+                | 'infixN'      { Infix NonAssoc   $1 }
 
         Argument(argid) :: { ArgumentSpan }
             : List1(Argument_(argid))
