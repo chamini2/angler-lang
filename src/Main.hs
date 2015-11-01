@@ -42,12 +42,12 @@ main = do
         print options
 
         (filepath, handle) <- case (nonOptions, view opt_stdin options) of
-                ([ f ], False) -> do
+                ([f], False) -> do
                         h <- openModule f ((pshowError . IOError . OpenModule) f)
                         return (f, h)
-                ([ ]  , True ) -> return ("<stdin>", stdin)
-                ([ ]  , False) -> pshowError (IOError NoModules)
-                (_ : _, _    ) -> pshowError (IOError TooManyModules)
+                ([] , True ) -> return ("<stdin>", stdin)
+                ([] , False) -> pshowError (IOError NoModules)
+                (_  , _    ) -> pshowError (IOError TooManyModules)
 
         (table, ast) <- readModule options filepath handle
         return ()
@@ -135,7 +135,7 @@ readModule options filepath handle = do
                                 '.' -> pathSeparator : path
                                 _   -> c             : path-}
 
--- maybe receive the ExitCode number instead of just plugging a one
+-- maybe receive the ExitCode number instead of just plugging one in
 strError :: String -> IO a
 strError str = putStrLn str >> exitWith (ExitFailure 1)
 

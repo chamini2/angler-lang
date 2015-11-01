@@ -31,13 +31,13 @@ import qualified Prelude                    as P (elem)
 -- interface for a scoped symbol table
 newtype ScopedTable sym
   = ScopedTable
-        { _tab_stack    :: [ Map String sym ] }
+        { _tab_stack    :: [Map String sym] }
   deriving Show
 
 makeLenses ''ScopedTable
 
 empty :: ScopedTable sym
-empty = ScopedTable [ Map.empty ]
+empty = ScopedTable [Map.empty]
 
 enterScope :: ScopedTable sym -> ScopedTable sym
 enterScope = over tab_stack (cons Map.empty)
