@@ -76,9 +76,7 @@ $escape_chars = [ a b f n r t v \\ \' \" ]                              -- "
 
 -- with '_'
 @closed       = (@op \_)* @op
-@fixed        = (\_)? (@op \_)* @op (\_)?
-
-@ident        = @fixed | @op
+@ident        = (\_)? (@op \_)* @op (\_)?
 
 -- for modules (paths)
 @path         = (@opalpha \.)*
@@ -113,7 +111,9 @@ $white_no_nl+   ;
 
 <0> {
         \n      { push bol }
-        @ident  { identifier TkIdentifier }
+
+        -- identifiers
+        @ident  { identifier (fixity TkIdentifier) }
         @qualf  { identifier TkQualified  }
 
         @int    { tokenStore (TkInteger . read) }
@@ -278,6 +278,13 @@ identifier idTk span buf len = case Map.lookup str reserved of
                 TkWith  -> pushM lp_lex_state layout   -- for type constructors
                 TkLet   -> pushM lp_lex_state layout   -- for let .. in ..
                 _       -> return ()
+
+fixity :: (String -> Fixity -> Token) -> String -> Token
+fixity idTk str = idTk str $ case (head str, last str) of
+        ('_', '_') -> Infix
+        (_  , '_') -> Prefix
+        ('_', _  ) -> Postfix
+        _          -> if any (=='_') str then Closedfix else Nofix
 
 newLayoutContext :: Token -> Action
 newLayoutContext tk span _buf len = do

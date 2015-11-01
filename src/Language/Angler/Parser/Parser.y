@@ -12,7 +12,8 @@ import           Language.Angler.AST
 import           Language.Angler.Error
 import           Language.Angler.Monad
 import           Language.Angler.Parser.LP
-import           Language.Angler.Parser.Token
+import           Language.Angler.Parser.Token hiding (Fixity(..))
+import qualified Language.Angler.Parser.Token as Tok
 import           Language.Angler.SrcLoc
 
 import           Control.Applicative          (Alternative(..))
@@ -32,7 +33,7 @@ import           Data.Maybe                   (isJust, fromJust)
 %name parseModule Module
 
 %token
-        ident                   { Loc _ (TkIdentifier _) }
+        ident                   { Loc _ (TkIdentifier _ _) }
         qualf                   { Loc _ (TkQualified  _) }
 
         int                     { Loc _ (TkInteger _)    }
@@ -117,21 +118,35 @@ ListSep1(r,sep) :: { Seq r }
 --------------------------------------------------------------------------------
 -- identifiers
 Id :: { IdentifierSpan }
-    : ident
-                    { Identifier ($1^.loc_insd.to tkId) ($1^.loc_span) }
+    : IdFix         { fst $1 }
 
 QId :: { IdentifierSpan }
     : qualf         { Identifier ($1^.loc_insd.to tkId) ($1^.loc_span) }
     | Id            { $1 }
 
 DotId :: { IdentifierSpan }
-    : '.'           { Identifier "."  $1 }
+    : DotIdFix      { fst $1 }
 
 ArrowId :: { IdentifierSpan }
-    : '->'          { Identifier "->" $1 }
+    : ArrowIdFix    { fst $1 }
 
 EqualsId :: { IdentifierSpan }
-    : '='           { Identifier "="  $1 }
+    : EqualsIdFix   { fst $1 }
+
+----------------------------------------
+-- identifiers with fixity
+IdFix :: { (IdentifierSpan, Tok.Fixity) }
+    : ident         { (Identifier ($1^.loc_insd.to tkId) ($1^.loc_span),
+                       $1^.loc_insd.to tkIdFix) }
+
+DotIdFix :: { (IdentifierSpan, Tok.Fixity) }
+    : '.'           { (Identifier "."  $1, Tok.Nofix) }
+
+ArrowIdFix :: { (IdentifierSpan, Tok.Fixity) }
+    : '->'          { (Identifier "->" $1, Tok.Nofix) }
+
+EqualsIdFix :: { (IdentifierSpan, Tok.Fixity) }
+    : '='           { (Identifier "="  $1, Tok.Nofix) }
 
 ----------------------------------------
 -- module
@@ -157,8 +172,7 @@ Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
                                     -- get the farthest span
                                     [ fmap (^.idn_annot) $3
                                     , fmap snd           $4
-                                    , Just ($2^.idn_annot)] )))
-                        }
+                                    , Just ($2^.idn_annot) ]))) }
 
         ImportAs :: { IdentifierSpan }
             : 'as' QId      { $2 }
@@ -216,9 +230,20 @@ Body :: { BodySpan }
         | Argument(FunId) '=' ExpressionWhere
                         { FunctionDef $1 $3
                             (srcSpanSpan ($1^.arg_annot) ($3^.whre_annot)) }
-        | 'operator' Id FixityWithPrecedence
-                        { uncurry (OperatorDef $2) $3
-                            (srcSpanSpan $1 ($3^._1.fix_annot)) }
+
+        -- operator definition
+        | OperatorDefPrec('prefix')
+                        {% handleOperatorDef ($1 Tok.Prefix    Prefix)             }
+        | OperatorDefPrec('postfix')
+                        {% handleOperatorDef ($1 Tok.Postfix   Postfix)            }
+        | OperatorDefPrec('infixL')
+                        {% handleOperatorDef ($1 Tok.Infix     (Infix LeftAssoc))  }
+        | OperatorDefPrec('infixR')
+                        {% handleOperatorDef ($1 Tok.Infix     (Infix RightAssoc)) }
+        | OperatorDefPrec('infixN')
+                        {% handleOperatorDef ($1 Tok.Infix     (Infix NonAssoc))   }
+        | OperatorDef('closed')
+                        {% handleOperatorDef ($1 Tok.Closedfix Closedfix)          }
 
         -- behaviour namespace
         -- | BehaviourNamespace
@@ -270,25 +295,15 @@ Body :: { BodySpan }
                 '{^' ListSep1(TypeBindWhere, '^;') '^}'
                             { ($3, srcSpanSpan $1 $4) }
 
-        FixityWithPrecedence :: { (FixitySpan, Maybe Int) }
-            : NoPrecFixity  { ($1, Nothing) }
-            | PrecFixity LitInt
-                            { ($1, $2^?lit_int) }
-            -- errors
-            | PrecFixity    {% throwPError (PErrExpectedAfter "precedence" "fixity")
-                                ($1^.fix_annot) }
-            NoPrecFixity :: { FixitySpan }
-                : 'closed'      { Closedfix        $1 }
-                -- errors
-                | 'closed' LitInt
-                                {% throwPError (PErrUnexpectedAfter "precedence" "closed fixity")
-                                    (srcSpanSpan $1 ($2^.lit_annot)) }
-            PrecFixity :: { FixitySpan }
-                : 'prefix'      { Prefix           $1 }
-                | 'postfix'     { Postfix          $1 }
-                | 'infixL'      { Infix LeftAssoc  $1 }
-                | 'infixR'      { Infix RightAssoc $1 }
-                | 'infixN'      { Infix NonAssoc   $1 }
+        OperatorDef(fixity) :: { Tok.Fixity -> (SrcSpan -> FixitySpan) ->
+                                 Either (ParseError, SrcSpan) BodyStmtSpan }
+           : 'operator' IdFix fixity
+                            { defineOperator $2 $3 (srcSpanSpan $1 $3) }
+
+        OperatorDefPrec(fixity) :: { Tok.Fixity -> (Int -> SrcSpan -> FixitySpan) ->
+                                 Either (ParseError, SrcSpan) BodyStmtSpan }
+           : OperatorDef(fixity) LitInt
+                            { \tokFix fix -> $1 tokFix (fix ($2^?!lit_int)) }
 
         Argument(argid) :: { ArgumentSpan }
             : List1(Argument_(argid))
@@ -449,6 +464,16 @@ parseError (Loc l tk) = case tk of
 
 throwPError :: ParseError -> SrcSpan -> LP a
 throwPError err = throwError . flip Loc (ParseError err)
+
+defineOperator :: (IdentifierSpan, Tok.Fixity) -> SrcSpan -> SrcSpan
+               -> Tok.Fixity -> (SrcSpan -> FixitySpan)
+               -> Either (ParseError, SrcSpan) BodyStmtSpan
+defineOperator idn fixSpn spn tokFix fixConstr = if snd idn == tokFix
+        then Right (OperatorDef (fst idn) (fixConstr fixSpn) spn)
+        else Left (PErrUnexpectedAfter "fixity" (show (snd idn) ++ " identifier"), spn)
+
+handleOperatorDef :: Either (ParseError, SrcSpan) BodyStmtSpan -> LP BodyStmtSpan
+handleOperatorDef = either (uncurry throwPError) return
 
 getWhere :: Maybe (BodySpan, SrcSpan) -> f SrcSpan -> (Lens' (f SrcSpan) SrcSpan) -> WhereSpan f
 getWhere mwhre e elns = case mwhre of

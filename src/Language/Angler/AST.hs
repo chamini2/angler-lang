@@ -77,7 +77,6 @@ data BodyStmt a
   | OperatorDef
         { _oper_idn     :: Identifier a
         , _oper_fix     :: Fixity a
-        , _oper_prec    :: Maybe Int
         , _stm_annot    :: a
         }
   deriving Show
@@ -159,31 +158,36 @@ data Associativity
   deriving (Show, Eq, Ord)
 
 data Fixity a
-  = Prefix
-        { _fix_annot    :: a }
-  | Infix
+  = Infix
         { _fix_assoc    :: Associativity
+        , _fix_prec     :: Int
+        , _fix_annot    :: a
+        }
+  | Prefix
+        { _fix_prec     :: Int
         , _fix_annot    :: a
         }
   | Postfix
-        { _fix_annot    :: a }
+        { _fix_prec     :: Int
+        , _fix_annot    :: a
+        }
   | Closedfix
         { _fix_annot    :: a }
   deriving Show
 type FixitySpan = Fixity SrcSpan
 
 instance Eq (Fixity a) where
-        (==) a b = a <= b && b <= a
+        (==) l r = l <= r && r <= l
 
 instance Ord (Fixity a) where
-        (<=) a b = constr a <= constr b
+        (<=) l r = constr l <= constr r
             where
                 constr :: Fixity a -> String
                 constr fix = case fix of
-                        Prefix    _ -> "Prefix"
-                        Postfix   _ -> "Postfix"
+                        Infix a _ _ -> "Infix" ++ show a
+                        Prefix  _ _ -> "Prefix"
+                        Postfix _ _ -> "Postfix"
                         Closedfix _ -> "Closedfix"
-                        Infix ass _ -> "Infix" ++ show ass
 
 data Argument a
   = VarBinding
@@ -291,12 +295,9 @@ instance PrettyShow (BodyStmt a) where
                 FunctionDef args expr _ -> do
                         pshow args
                         string " = " >> pshow expr
-                OperatorDef idn fx mint _ -> do
+                OperatorDef idn fx _ -> do
                         string "operator " >> lstring idn_str idn >> string " "
                         pshow fx
-                        when (isJust mint) $ do
-                                let Just int = mint
-                                string " " >> string (show int)
 
 instance PrettyShow (f a) => PrettyShow (Where f a) where
         pshow whre = case whre of
@@ -368,10 +369,10 @@ instance PrettyShow Associativity where
 
 instance PrettyShow (Fixity a) where
         pshow fix = case fix of
-                Prefix _      -> string "prefix"
-                Infix assoc _ -> string "infix" >> pshow assoc
-                Postfix _     -> string "postfix"
-                Closedfix _   -> string "closed"
+                Infix assoc pr _ -> string "infix" >> pshow assoc >> string (" " ++ show pr)
+                Prefix      pr _ -> string "prefix" >> string (" " ++ show pr)
+                Postfix     pr _ -> string "postfix" >> string (" " ++ show pr)
+                Closedfix      _ -> string "closed"
 
 instance PrettyShow (TypeBind a) where
         pshow (TypeBind idn typ _) = lstring idn_str idn >> string " : " >> pshow typ

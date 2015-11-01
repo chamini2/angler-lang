@@ -2,9 +2,25 @@ module Language.Angler.Parser.Token where
 
 import           PrettyShow
 
+data Fixity
+  = Prefix
+  | Postfix
+  | Infix
+  | Closedfix
+  | Nofix
+  deriving Eq
+
+instance Show Fixity where
+        show fix = case fix of
+                Infix     -> "infix"
+                Prefix    -> "prefix"
+                Postfix   -> "postfix"
+                Closedfix -> "closed"
+                Nofix     -> "no-fix"
+
 data Token
   -- identifiers
-  = TkIdentifier        { tkId :: String }
+  = TkIdentifier        { tkId :: String, tkIdFix :: Fixity }
   | TkQualified         { tkId :: String }
 
   -- comments
@@ -64,7 +80,7 @@ data Token
 
 instance Show Token where
         show tk = case tk of
-                TkIdentifier str   -> showId str
+                TkIdentifier str _ -> showId str
                 TkQualified  str   -> showId str
 
                 TkLineComment str  -> "--" ++ str
