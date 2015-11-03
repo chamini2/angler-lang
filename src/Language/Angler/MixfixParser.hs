@@ -1,10 +1,8 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE FlexibleInstances #-}
 
-module Language.Angler.MixfixParser
-        ( parseMixfix ) where
+module Language.Angler.MixfixParser where
 
 import           Language.Angler.AST
 import           Language.Angler.Error       hiding (ParseError)
@@ -15,475 +13,386 @@ import           Language.Angler.SrcLoc
 
 import           PrettyShow
 
-import           Control.Applicative         (Alternative(..), (<|>), liftA, many)
+import           Control.Applicative         (Alternative(..))
+
 import           Control.Lens                hiding (op, below, parts)
+
 import           Control.Monad.Except        (Except, runExcept)
-import           Control.Monad.State         (StateT, runStateT)
+import           Control.Monad.State         (StateT, runStateT, gets)
 import           Control.Monad.Trans         (lift)
 
-import           Data.Char                   (isSpace)
-import           Data.Default                (Default(..))
-import           Data.Foldable               (toList)
 import           Data.Function               (on)
+
+import           Data.Foldable               (toList)
 import           Data.List                   (sortBy)
-import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as Map
-import           Data.Maybe                  (isNothing)
 import           Data.Sequence               (Seq, fromList)
 
-import           Text.Megaparsec             (ParsecT, choice, eof, runParserT,
-                                              token, try)
-import           Text.Megaparsec.Error       (ParseError, Message(..),
-                                              errorMessages, errorPos)
-import           Text.Megaparsec.Pos         (SourcePos(..), newPos, setSourceName,
-                                              setSourceLine, setSourceColumn)
-import           Text.Megaparsec.Prim        (getInput, setInput,
-                                              getPosition, setPosition)
+import           Data.Maybe                  (isNothing)
+
+import qualified Data.Map.Strict             as Map
+
+import           Text.Megaparsec             (ParsecT, runParserT, (<|>),
+                                              choice, eof, many, token, try, some)
+import           Text.Megaparsec.Error       (ParseError, Message(..))
+import           Text.Megaparsec.Pos         (SourcePos, newPos)
+import           Text.Megaparsec.Prim        (MonadParsec, getInput, getPosition,
+                                              setInput, setPosition)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
-
-import           Prelude                     hiding (lookup)
-
---------------------------------------------------------------------------------
--- Contraint Kind
-
-type ConSnoc f a =
-  ( Alternative f
-  , Cons (f a) (f a) a a
-  , Snoc (f a) (f a) a a
-  )
 
 --------------------------------------------------------------------------------
 -- Operator handling
 
-type OperatorPart    = Maybe String                     -- Nothing represents hole
-type OperatorParts   = [ OperatorPart ]
-type PrecedenceLevel = Map (Fixity ()) [ OperatorParts ]
-type PrecedenceTable = [ PrecedenceLevel ]
+type Fixity' = Fixity ()
 
-opStr :: OperatorParts -> String
+type OperatorPart = Maybe String
+type OperatorRepr = [OperatorPart]
+type PrecLevel    = Map.Map Fixity' [OperatorRepr]
+type PrecTable    = [PrecLevel]
+
+data Operator
+  = Operator
+        { _op_idn       :: String
+        , _op_fix       :: Fixity'
+        }
+  deriving Show
+
+makeLenses ''Operator
+
+opStr :: OperatorRepr -> String
 opStr = concatMap (maybe "_" id)
 
-strOp :: String -> OperatorParts
+strOp :: String -> OperatorRepr
 strOp = foldr go []
     where
-        go :: Char -> OperatorParts -> OperatorParts
+        go :: Char -> OperatorRepr -> OperatorRepr
         go c ps = case (c,ps) of
                 ('_', _           ) -> Nothing    : ps
                 ( _ , Just p : ps') -> Just (c:p) : ps'
                 ( _ , _           ) -> Just [c]   : ps
 
---------------------------------------------------------------------------------
--- State
-
-data Operator
-  = Operator
-        { _op_idn       :: String
-        , _op_fix       :: Fixity ()
-        , _op_prec      :: Maybe Int
-        }
-  deriving Show
-
-data OpPState
-  = OpPState
-        { _opp_table    :: ScopedTable Operator }
-
-makeLenses ''Operator
-makeLenses ''OpPState
-
--- Lens for accessing OperatorParts as if it was a field of Operator
-op_repr :: Lens' Operator OperatorParts
-op_repr op_fn op = wrap <$> views op_idn (op_fn . strOp) op
+-- Lens for accessing OperatorRepr as if it was a field of Operator
+op_prts :: Lens' Operator OperatorRepr
+op_prts op_fn op = wrap <$> views op_idn (op_fn . strOp) op
     where
-        wrap :: OperatorParts -> Operator
+        wrap :: OperatorRepr -> Operator
         wrap prts = set op_idn (opStr prts) op
 
-instance STScopedTable OpPState Operator where
-        st_table = opp_table
+--------------------------------------------------------------------------------
+-- LoadPrecTable monad
 
-instance Default OpPState where
-        def = OpPState { _opp_table = ST.empty }
-
-scopedTabPrecedenceTab :: ScopedTable Operator -> PrecedenceTable
-scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
-    where
-        sort :: [Operator] -> [Operator]
-        sort = sortBy (compare `on` view op_prec)
-
-        buildTable :: [Operator] -> PrecedenceTable
-        buildTable = fst . foldr go ([Map.empty], Nothing)
-
-        go :: Operator -> (PrecedenceTable, Maybe Int) -> (PrecedenceTable, Maybe Int)
-        go op (tab, mprec) = (go' tab, opPrec)
-            where
-                opPrec :: Maybe Int
-                opPrec = view op_prec op
-
-                go' :: PrecedenceTable -> PrecedenceTable
-                go' = if opPrec < mprec
-                        then cons newLvl
-                        else over _head addOp
-                    where
-                        newLvl :: PrecedenceLevel
-                        newLvl = uncurry Map.singleton opInfo
-
-                        addOp :: PrecedenceLevel -> PrecedenceLevel
-                        addOp = uncurry (Map.insertWith (++)) opInfo
-
-                        opInfo :: (Fixity (), [OperatorParts])
-                        opInfo = (view op_fix op, [view op_repr op])
+type LoadPrecTableState = ScopedTable Operator
+type LoadPrecTable = StateT LoadPrecTableState (Except [Located Error])
 
 --------------------------------------------------------------------------------
--- Monad
-
-type Mixfix = StateT OpPState (Except [Located Error])
-
-runMixfix :: Mixfix a -> Either [Located Error] (a, OpPState)
-runMixfix = runExcept . flip runStateT def
-
-parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
-parseMixfix = over _Right fst . runMixfix . mixfixModule
-
---------------------------------------------------------------------------------
-
-mixfixModule :: ModuleSpan -> Mixfix ModuleSpan
-mixfixModule = mapMOf mod_body mixfixBody
-
-mixfixBody :: BodySpan -> Mixfix BodySpan
-mixfixBody = mapMOf traverse mixfixBodyStmt
-
-mixfixBodyStmt :: BodyStmtSpan -> Mixfix BodyStmtSpan
-mixfixBodyStmt stmt = case stmt of
-        OpenType {} -> do
-                stmt' <- mapMOf (open_cnts._Just.traverse) mixfixTypeBind stmt
-                mapMOf open_type mixfixWhere stmt'
-        ReopenType {} -> mapMOf (rpen_cnts.traverse) mixfixTypeBind stmt
-        ClosedType {} -> do
-                stmt'  <- mapMOf clsd_type mixfixWhere stmt
-                mapMOf (clsd_cnts.traverse) mixfixTypeBind stmt'
-        FunctionDecl {} -> mapMOf fdec_type mixfixWhere stmt
-        FunctionDef {} -> do
-                stmt' <- mapMOf fdef_args mixfixArgument stmt
-                mapMOf fdef_expr mixfixWhere stmt'
-        OperatorDef idn fix mprec spn -> do
-                let idn' = view idn_str idn
-                    fix' = set fix_annot () fix
-                merr <- safeInsertSc idn' (Operator idn' fix' mprec)
-                case merr of
-                        Just err -> throwError [Loc spn err]
-                        _        -> return ()
-                return stmt
-
-mixfixWhere :: ExprWhereSpan -> Mixfix (ExprWhereSpan)
-mixfixWhere whre = do
-        whre' <- mapMOf (whre_body._Just) mixfixBody whre
-        mapMOf whre_insd mixfixExpression whre'
-
-mixfixExpression :: ExpressionSpan -> Mixfix ExpressionSpan
-mixfixExpression expr = do
-        eit   <- parse [expr]
-        expr' <- case eit of
-                Left perr -> do
-                        let msgs = errorMessages perr
-                            pos  = errorPos perr
-                            loc  = SrcLoc (sourceName pos) (sourceLine pos) (sourceColumn pos)
-                            spn  = srcLocSpan loc loc
-                            errs = fmap (Loc spn . CheckError . messageCheckError) msgs
-                        throwError errs
-                Right x -> return x
-        return (flattenExpression expr')
-    where
-        parse :: [ExprSpan] -> Mixfix (Either ParseError ExprSpan)
-        parse = runOpP generateOpP (view exp_annot expr)
-        flattenExpression :: ExpressionSpan -> ExpressionSpan
-        flattenExpression x = case x of
-                Apply xs an -> case toList xs of
-                        [x'] -> flattenExpression x'
-                        xs'  -> Apply (fromList (fmap flattenExpression xs')) an
-                _ -> x
-        messageCheckError :: Message -> CheckError
-        messageCheckError msg = case msg of
-                Expected   str -> CErrExpected str
-                Unexpected str -> CErrUnexpected str
-                Message    str -> CErr str
-
-mixfixTypeBind :: TypeBindSpan -> Mixfix TypeBindSpan
-mixfixTypeBind = mapMOf typ_type mixfixWhere
-
-mixfixArgument :: ArgumentSpan -> Mixfix ArgumentSpan
-mixfixArgument arg = do
-        expr <- mixfixExpression (argExpr arg)
-        return (exprArg expr)
-    where
-        argExpr :: ArgumentSpan -> ExpressionSpan
-        argExpr arg' = case arg' of
-                VarBinding idn an  -> Var idn an
-                DontCare an        -> Lit (error "MixfixParser.mixfixArgument: DontCare") an
-                ApplyBinding xs an -> Apply (fmap argExpr xs) an
-        exprArg :: ExpressionSpan -> ArgumentSpan
-        exprArg expr = case expr of
-                Apply xs an -> case toList xs of
-                        [x] -> exprArg x
-                        _   -> ApplyBinding (fmap exprArg xs) an
-                Var idn an -> VarBinding idn an
-                Lit _   an -> DontCare an
-                _          -> error "MixfixParser.mixfixArgument: impossible case"
-
-mixfixImplicit :: ImplicitBindingSpan -> Mixfix ImplicitBindingSpan
-mixfixImplicit = mapMOf impl_expr mixfixExpression
-
---------------------------------------------------------------------------------
--- Parser
+-- Expressions parser
 
 type ExprSpan = ExpressionSpan
-type OpP = ParsecT [ExprSpan] Mixfix
+type OpParser = ParsecT [ExprSpan] LoadPrecTable
 
-runOpP :: OpP a -> SrcSpan -> [ExprSpan] -> Mixfix (Either ParseError a)
-runOpP act spn = runParserT (setPosition pos >> act) filepath
+runOpParser :: OpParser a -> SrcSpan -> [ExprSpan] -> LoadPrecTable (Either ParseError a)
+runOpParser act spn = runParserT (setPosition (spanPos spn) >> act) filepath
     where
         filepath :: FilePath
         filepath = view spn_file spn
-        pos :: SourcePos
-        pos = newPos filepath (view spn_sline spn) (view spn_scol spn)
+
+----------------------------------------
+-- DSL connections
+
+spanPos :: SrcSpan -> SourcePos
+spanPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
+
+levelFixity :: Fixity' -> PrecLevel -> [OperatorRepr]
+levelFixity fix = maybe [] id . Map.lookup fix
+
+mapTryChoice :: (Foldable f, Functor f, MonadParsec s m t) => f a -> (a -> m b)-> m b
+mapTryChoice ops act = choice (fmap (try . act) ops)
+
+type ConSnoc f a = (Alternative f, Cons (f a) (f a) a a, Snoc (f a) (f a) a a)
+listSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
+listSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
+
+precTable :: OpParser PrecTable
+precTable = gets (buildTable . sort . fmap snd . ST.toList)
+    where
+        sort :: [Operator] -> [Operator]
+        sort = sortBy (compare `on` previewOpPrec)
+
+        previewOpPrec :: Operator -> Maybe Int
+        previewOpPrec = preview (op_fix.fix_prec)
+
+        buildTable :: [Operator] -> PrecTable
+        buildTable = fst . foldr go ([Map.empty], Nothing)
+            where
+                go :: Operator -> (PrecTable, Maybe Int) -> (PrecTable, Maybe Int)
+                go op (tab, mprec) = (go' tab, opPrec)
+                    where
+                        opPrec :: Maybe Int
+                        opPrec = previewOpPrec op
+
+                        go' :: PrecTable -> PrecTable
+                        go' = if opPrec < mprec
+                                then cons newLvl
+                                else over _head consOp
+                            where
+                                newLvl :: PrecLevel
+                                newLvl = uncurry Map.singleton opInfo
+
+                                consOp :: PrecLevel -> PrecLevel
+                                consOp = uncurry (Map.insertWith (++)) opInfo
+
+                                opInfo :: (Fixity (), [OperatorRepr])
+                                opInfo = (view op_fix op, [view op_prts op])
+
 
 instance Show a => ShowToken (Expression a) where
-        showToken = trim . prettyShow
-            where
-                trim :: String -> String
-                trim = reverse . dropWhile isSpace . reverse
+        showToken = prettyShow
 
-instance ShowToken a => ShowToken [a] where
-        showToken = show
+instance Show a => ShowToken [Expression a] where
+        showToken = concatMap prettyShow
 
-satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpP ExprSpan
-satisfy' g = token nextPos g >>= handleExprSpan
+satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpParser ExprSpan
+satisfy' guard = token nextPos guard >>= handleExprSpan
     where
         nextPos :: Int -> SourcePos -> ExprSpan -> SourcePos
-        nextPos _tab p x = (setName . setLine . setColumn) p
-            where
-                xSpan :: SrcSpan
-                xSpan = view exp_annot x
-                setName :: SourcePos -> SourcePos
-                setName = flip setSourceName (view spn_file xSpan)
-                setLine :: SourcePos -> SourcePos
-                setLine = flip setSourceLine (view spn_sline xSpan)
-                setColumn :: SourcePos -> SourcePos
-                setColumn = flip setSourceColumn (view spn_scol xSpan)
+        nextPos _tab _p = spanPos . view exp_annot
+
         -- How to handle any specific expression
-        handleExprSpan :: ExprSpan -> OpP ExprSpan
+        handleExprSpan :: ExprSpan -> OpParser ExprSpan
         handleExprSpan expr = case expr of
                 Var _ _ -> return expr
                 Lit _ _ -> return expr
                 Apply xs an -> do
-                        input <- getInput
-                        pos   <- getPosition
-                        let file = view spn_file  an
-                            lin  = view spn_sline an
-                            col  = view spn_scol  an
+                        inp <- getInput
+                        pos <- getPosition
+
                         setInput (toList xs)
-                        setPosition (newPos file lin col)
-                        x' <- generateOpP
-                        setInput input
+                        setPosition (spanPos an)        -- probably this does nothing
+                        x' <- generateOpParser
+
+                        setInput inp
                         setPosition pos
                         return x'
-                Lambda {} -> lift $ do
-                        expr' <- mapMOf lam_arg mixfixArgument expr
-                        mapMOf lam_expr mixfixExpression expr'
-                -- Lambda arg x an -> do
-                --         arg' <- lift (mixfixArgument arg)
-                --         x'   <- lift (mixfixExpression x)
-                --         return (Lambda arg' x' an)
-                Let {} -> lift $ do
-                        expr' <- mapMOf let_body mixfixBody expr
-                        mapMOf let_expr mixfixExpression expr'
-                -- Let body x an -> do
-                --         body' <- lift (mixfixBody body)
-                --         x'    <- lift (mixfixExpression x)
-                --         return (Let body' x' an)
-                Forall {} -> lift $ do
-                        expr' <- mapMOf (fall_typs.traverse) mixfixTypeBind expr
-                        mapMOf fall_expr mixfixExpression expr'
-                -- Forall typs x an -> do
-                --         typs' <- lift (mapM mixfixTypeBind typs)
-                --         x'    <- lift (mixfixExpression x)
-                --         return (Forall typs' x' an)
-                Exists {} -> lift $ do
-                        expr' <- mapMOf exst_type mixfixTypeBind expr
-                        mapMOf exst_expr mixfixExpression expr'
-                -- Exists typ x an -> do
-                --         typ' <- lift (mixfixTypeBind typ)
-                --         x'   <- lift (mixfixExpression x)
-                --         return (Exists typ' x' an)
-                Select {} -> lift (mapMOf slct_type mixfixTypeBind expr)
-                -- Select typ an -> do
-                --         typ' <- lift (mixfixTypeBind typ)
-                --         return (Select typ' an)
-                ImplicitExpr {} ->
-                        lift (mapMOf (impl_exprs.traverse) mixfixImplicit expr)
+                Lambda arg x an -> lift $ do
+                        arg' <- mixfixArgument arg
+                        x'   <- mixfixExpression x
+                        return (Lambda arg' x' an)
+                Let body x an -> lift $ do
+                        body' <- mixfixBody body
+                        x'    <- mixfixExpression x
+                        return (Let body' x' an)
+                Forall typs x an -> lift $ do
+                        typs' <- mapM mixfixTypeBind typs
+                        x'    <- mixfixExpression x
+                        return (Forall typs' x' an)
+                Exists typ x an -> lift $ do
+                        typ' <- mixfixTypeBind typ
+                        x'   <- mixfixExpression x
+                        return (Exists typ' x' an)
+                Select typ an -> lift $ do
+                        typ' <- mixfixTypeBind typ
+                        return (Select typ' an)
+                ImplicitExpr imps an -> lift $ do
+                        imps' <- mapM mixfixImplicit imps
+                        return (ImplicitExpr imps' an)
 
-satisfy :: (ExprSpan -> Bool) -> OpP ExprSpan
-satisfy g = satisfy' testExpr
+satisfy :: [Message] -> (ExprSpan -> Bool) -> OpParser ExprSpan
+satisfy errs guard = satisfy' testExpr
     where
         testExpr :: ExprSpan -> Either [Message] ExprSpan
-        testExpr x = if g x
+        testExpr x = if guard x
                 then Right x
-                else Left [Unexpected (showToken x)]
+                else Left (Unexpected (showToken x) : errs)
 
-var :: String -> OpP ExprSpan
-var str = satisfy' testExpr
+var :: String -> OpParser ExprSpan
+var str = satisfy [Expected str] sameVar
     where
-        testExpr :: ExprSpan -> Either [Message] ExprSpan
-        testExpr x = if testVar
-                then Right x
-                else Left [ Unexpected (showToken x)
-                          , Expected str ]
-            where
-                testVar :: Bool
-                testVar = case x of
-                        Var name _ -> name == str
-                        _          -> False
+        sameVar :: ExprSpan -> Bool
+        sameVar x = case x of
+                Var name _ -> name == str
+                _          -> False
 
-searchOps :: Fixity () -> PrecedenceLevel -> [ OperatorParts ]
-searchOps fix = maybe [] id . Map.lookup fix
+----------------------------------------
+-- Parser generator
 
-generateOpP :: OpP ExprSpan
-generateOpP = topOpP <* eof
+generateOpParser :: OpParser ExprSpan
+generateOpParser = topP <* eof
     where
-        precTable :: OpP PrecedenceTable
-        precTable = uses opp_table scopedTabPrecedenceTab
-
-        topOpP :: OpP ExprSpan
-        topOpP = precTable >>= choice . foldr go [bottomOpP] . fmap levelOpP
+        closedPartP :: ConSnoc f ExprSpan => OperatorRepr -> OpParser (f ExprSpan)
+        closedPartP = foldr go (pure empty) . closedPart
             where
-                -- We pass all the parsers below as *fallback*
-                -- if we couldn't get a match on this level
-                go :: ([OpP ExprSpan] -> OpP ExprSpan) -> [OpP ExprSpan] -> [OpP ExprSpan]
-                go pp acts = try (pp acts) : acts
+                go :: Alternative f => OperatorPart -> OpParser (f ExprSpan) -> OpParser (f ExprSpan)
+                go mpart act = partP mpart <|> act
+                partP :: Alternative f => OperatorPart -> OpParser (f ExprSpan)
+                partP mprt = case mprt of
+                        Just prt -> var prt *> pure empty
+                        Nothing  -> pure <$> topP
+                closedPart :: OperatorRepr -> OperatorRepr
+                closedPart = reverse . clean . reverse . clean
+                    where
+                        clean :: [Maybe String] -> [Maybe String]
+                        clean = dropWhile isNothing
 
-        tryOpsOpP :: [ OperatorParts ] -> (OperatorParts -> OpP a)-> OpP a
-        tryOpsOpP ops act = choice (fmap (try . act) ops)
+        topP :: OpParser ExprSpan
+        topP = precTable >>= choice . foldr go [bottomP]
+            where
+                -- keep every parser level, passing them as the *hole*
+                -- parser to use in evey upper level
+                go :: PrecLevel -> [OpParser ExprSpan] -> [OpParser ExprSpan]
+                go lvl acts = try (levelP lvl acts) : acts
 
-        bottomOpP :: OpP ExprSpan
-        bottomOpP = do
-                xs <- liftA fromList (some basicToken)
-                return (Apply xs (xsSpan xs))
+        bottomP :: OpParser ExprSpan
+        bottomP = do
+                xs <- fromList <$> (some basicToken)
+                return (Apply xs (listSpan xs))
             where
                 -- This tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
                 -- so `if if a then b else c` is parsed `if_then_else_ (if a) b c`
                 -- instead of giving a parse error
-                cleverTokens :: OpP [ExprSpan]
+                cleverTokens :: OpParser [ExprSpan]
                 cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
-
-                anyToken :: OpP ExprSpan
-                anyToken = satisfy (const True)
-
-                basicToken :: OpP ExprSpan
-                basicToken = try obviousToken <|> closedOpP
                     where
-                        obviousToken :: OpP ExprSpan
-                        obviousToken = precTable >>= satisfy' . testExpr
+                        anyToken :: OpParser ExprSpan
+                        anyToken = satisfy [] (const True)
+
+                basicToken :: OpParser ExprSpan
+                basicToken = try obviousToken <|> closedfixP
+                    where
+                        obviousToken :: OpParser ExprSpan
+                        obviousToken = precTable >>= satisfy [Expected "identifier"] . notOpPart
                             where
-                                testExpr :: PrecedenceTable -> ExprSpan -> Either [Message] ExprSpan
-                                testExpr prec x = case x of
-                                        Var name _ -> if name `notElem` (parts prec)
-                                                then Right x
-                                                else Left [ Unexpected ("operator part " ++ name)
-                                                          , Expected "identifier" ]
-                                        _ -> Right x
-                                parts :: PrecedenceTable -> [String]
-                                parts = toListOf (traverse.traverse.traverse.traverse._Just)
-                closedOpP :: OpP ExprSpan
-                closedOpP = do
-                        closedOps <- concatMap (searchOps (Closedfix ())) <$> precTable
-                        tryOpsOpP closedOps $ \op -> do
-                                (clxs, sp, opName) <- closedPartOpP op
-                                return (Apply (Var opName sp <| clxs) sp)
+                                notOpPart :: PrecTable -> ExprSpan -> Bool
+                                notOpPart prec x = case x of
+                                        Var name _ -> name `notElem` opParts
+                                        _          -> True
+                                    where
+                                        opParts :: [String]
+                                        opParts = error "opParts: use prec variable"
 
-        levelOpP :: PrecedenceLevel -> [OpP ExprSpan] -> OpP ExprSpan
-        levelOpP lvl below = try middleOpP <|> try rightOpP <|> leftOpP
+                        closedfixP :: OpParser ExprSpan
+                        closedfixP = do
+                                closedOps <- concatMap (levelFixity (Closedfix ())) <$> precTable
+                                mapTryChoice closedOps $ \op -> do
+                                        xs <- closedPartP op
+                                        let spn = listSpan xs
+                                            nam = opStr op
+                                        return (Apply (Var nam spn <| xs) spn)
+
+        levelP :: PrecLevel -> [OpParser ExprSpan] -> OpParser ExprSpan
+        levelP lvl below = try nonAssocP <|> try rightP <|> leftP
             where
-                belowOpP :: OpP ExprSpan
-                belowOpP = choice below
+                belowP :: OpParser ExprSpan
+                belowP = choice below
 
-                middleOpP :: OpP ExprSpan
-                middleOpP = tryOpsOpP nonOps $ \op -> do
-                        leftH             <- belowOpP
-                        (clxs, _, opName) <- closedPartOpP op
-                        rightH            <- belowOpP
-                        let sp = srcSpanSpan (leftH^.exp_annot) (rightH^.exp_annot)
-                            xs = Var opName sp <| pure leftH <|> clxs |> rightH
-                        return (Apply xs sp)
+                infixOps :: Associativity -> [OperatorRepr]
+                infixOps ass = levelFixity (Infix ass dummy ()) lvl
                     where
-                        nonOps :: [ OperatorParts ]
-                        nonOps = searchOps (Infix NonAssoc ()) lvl
+                        dummy = error "infixOps: shouldn't be evaluated"
 
-                nonInfixOpP :: Fixity () -> OpP (Seq ExprSpan, SrcSpan)
-                nonInfixOpP fix = tryOpsOpP (searchOps fix lvl) $ \op -> do
-                        (clxs, sp, opName) <- closedPartOpP op
-                        return (Var opName sp <| clxs, sp)
+                genericOpP :: ConSnoc f ExprSpan
+                           => [OperatorRepr]    -- the operators to use
+                           -> Bool              -- if there is a left hand side
+                           -> Bool              -- if tehre is a right hand side
+                           -> OpParser (ExprSpan, f ExprSpan)
+                genericOpP list leftHS rightHS = mapTryChoice list $ \op -> do
+                        leftx  <- if leftHS  then pure <$> belowP else empty
+                        clxs   <- closedPartP op
+                        rightx <- if rightHS then pure <$> belowP else empty
 
-                rightOpP :: OpP ExprSpan
-                rightOpP = do
-                        xs <- some (try prefixOpP <|> rightAssocOpP)
-                        x  <- belowOpP
+                        let xs  = leftx <|> clxs <|> rightx
+                            spn = listSpan xs
+                            nam = opStr op
+
+                        return (Var nam spn, xs)
+
+                nonAssocP :: OpParser ExprSpan
+                nonAssocP = do
+                        (op, xs) <- genericOpP (infixOps NonAssoc) True True
+                        return (Apply (op <| xs) (listSpan xs))
+                -- nonAssocP :: OpParser ExprSpan
+                -- nonAssocP = mapTryChoice (infixOps NonAssoc) $ \op -> do
+                --         leftHS  <- belowP
+                --         clxs    <- closedPartP op
+                --         rightHS <- belowP
+                --         let spn = (srcSpanSpan `on` (view exp_annot)) leftHS rightHS
+                --             nam = opStr op
+                --             xs  = leftHS <| (clxs |> rightHS)
+                --         return (Apply (Var nam spn <| xs) spn)
+
+                rightP :: OpParser ExprSpan
+                rightP = do
+                        xs <- some (try prefixP <|> rightAssocP)
+                        x  <- belowP
                         return (foldr go x xs)
                     where
-                        go :: (Seq ExprSpan, SrcSpan) -> ExprSpan -> ExprSpan
-                        go (xs, sp) x = Apply (xs |> x) (srcSpanSpan sp (x^.exp_annot))
+                        go :: (ExprSpan, Seq ExprSpan) -> ExprSpan -> ExprSpan
+                        go (op, xs) x = let xs' = xs |> x
+                                        in Apply (op <| xs') (listSpan xs')
 
-                        prefixOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        prefixOpP = nonInfixOpP (Prefix ())
-
-                        rightAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        rightAssocOpP = tryOpsOpP rightOps $ \op -> do
-                                leftH                <- belowOpP
-                                (clxs, clsp, opName) <- closedPartOpP op
-                                let sp = srcSpanSpan (leftH^.exp_annot) clsp
-                                return (Var opName sp <| pure leftH <|> clxs, sp)
+                        prefixP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        prefixP = genericOpP prefixOps False False
                             where
-                                rightOps :: [ OperatorParts ]
-                                rightOps = searchOps (Infix RightAssoc ()) lvl
+                                prefixOps :: [OperatorRepr]
+                                prefixOps = levelFixity (Prefix dummy ()) lvl
+                                    where
+                                        dummy = error "prefixOps: shouldn't be evaluated"
+                        -- prefixP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        -- prefixP = mapTryChoice prefixOps $ \op -> do
+                        --         xs <- closedPartP op
+                        --         let spn = listSpan xs
+                        --             nam = opStr op
+                        --         return (Var nam spn, xs)
 
-                leftOpP :: OpP ExprSpan
-                leftOpP = do
-                        x  <- belowOpP
-                        xs <- many (try postfixOpP <|> leftAssocOpP)
+                        rightAssocP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        rightAssocP = genericOpP (infixOps RightAssoc) True False
+                        -- rightAssocP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        -- rightAssocP = mapTryChoice (infixOps RightAssoc) $ \op -> do
+                        --         leftHS <- belowP
+                        --         clxs   <- closedPartP op
+                        --         let xs  = leftHS <| clxs
+                        --             spn = listSpan xs
+                        --             nam = opStr op
+                        --         return (Var nam spn, xs)
+
+                leftP :: OpParser ExprSpan
+                leftP = do
+                        x  <- belowP
+                        xs <- some (try postfixP <|> leftAssocP)
                         return (foldl go x xs)
                     where
-                        go :: ExprSpan -> (Seq ExprSpan, SrcSpan) -> ExprSpan
-                        go x (xsS, sp) = Apply (fromList xs) sp
+                        go :: ExprSpan -> (ExprSpan, Seq ExprSpan) -> ExprSpan
+                        go x (op, xs) = let xs' = x <| xs
+                                        in Apply (op <| xs') (listSpan xs')
+
+                        postfixP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        postfixP = genericOpP postfixOps False False
                             where
-                                xs  = head xs' : x : tail xs'
-                                xs' = toList xsS
+                                postfixOps :: [OperatorRepr]
+                                postfixOps = levelFixity (Postfix dummy ()) lvl
+                                    where
+                                        dummy = error "postfixOps: shouldn't be evaluated"
+                        -- postfixP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        -- postfixP = mapTryChoice postfixOps $ \op -> do
+                        --         xs <- closedPartP op
+                        --         let spn = listSpan xs
+                        --             nam = opStr op
+                        --         return (Var nam spn, xs)
 
-                        postfixOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        postfixOpP = nonInfixOpP (Postfix ())
+                        leftAssocP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        leftAssocP = genericOpP (infixOps LeftAssoc) False True
+                        -- leftAssocP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
+                        -- leftAssocP = mapTryChoice (infixOps LeftAssoc) $ \op -> do
+                        --         clxs    <- closedPartP op
+                        --         rightHS <- belowP
+                        --         let xs  = clxs |> rightHS
+                        --             spn = listSpan xs
+                        --             nam = opStr op
+                        --         return (Var nam spn, xs)
 
-                        leftAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        leftAssocOpP = tryOpsOpP leftOps $ \op -> do
-                                (clxs, clsp, opName) <- closedPartOpP op
-                                rightH               <- belowOpP
-                                let sp = srcSpanSpan clsp (rightH^.exp_annot)
-                                return (Var opName sp <| (clxs |> rightH), sp)
-                            where
-                                leftOps :: [ OperatorParts ]
-                                leftOps = searchOps (Infix LeftAssoc ()) lvl
 
-        closedPartOpP :: ConSnoc f ExprSpan => OperatorParts -> OpP (f ExprSpan, SrcSpan, String)
-        closedPartOpP prts = do
-                xs <- foldr go (pure empty) (closedPart prts)
-                return (xs, xsSpan xs, opStr prts)
-            where
-                go :: Alternative f => OperatorPart -> OpP (f ExprSpan) -> OpP (f ExprSpan)
-                go mprt act = (<|>) <$> prtOpP mprt <*> act
-                prtOpP :: Alternative f => OperatorPart -> OpP (f ExprSpan)
-                prtOpP mprt = case mprt of
-                        Just prt -> pure empty <* var prt
-                        _        -> pure <$> topOpP
-                closedPart :: OperatorParts -> OperatorParts
-                closedPart = reverse . clean . reverse . clean
-                    where
-                        clean = dropWhile isNothing
 
-        xsSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
-        xsSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
+mixfixArgument = undefined
+mixfixBody = undefined
+mixfixExpression = undefined
+mixfixImplicit = undefined
+mixfixTypeBind = undefined
