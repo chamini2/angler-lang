@@ -63,7 +63,7 @@ opStr :: OperatorParts -> String
 opStr = concatMap (maybe "_" id)
 
 strOp :: String -> OperatorParts
-strOp = foldr go []
+strOp = foldr' go []
     where
         go :: Char -> OperatorParts -> OperatorParts
         go c ps = case (c,ps) of
@@ -111,7 +111,7 @@ scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
         opPrec = preview (op_fix.fix_prec)
 
         buildTable :: [Operator] -> PrecedenceTable
-        buildTable = fst . foldr go ([Map.empty], Nothing)
+        buildTable = fst . foldr' go ([Map.empty], Nothing)
 
         go :: Operator -> (PrecedenceTable, Maybe Int) -> (PrecedenceTable, Maybe Int)
         go op (tab, mprec) = (go' tab, opPrec op)
@@ -348,7 +348,7 @@ generateOpP = topOpP <* eof
         precTable = uses opp_table scopedTabPrecedenceTab
 
         topOpP :: OpP ExprSpan
-        topOpP = precTable >>= choice . foldr go [bottomOpP] . fmap levelOpP
+        topOpP = precTable >>= choice . foldr' go [bottomOpP] . fmap levelOpP
             where
                 -- We pass all the parsers below as *fallback*
                 -- if we couldn't get a match on this level
@@ -422,7 +422,7 @@ generateOpP = topOpP <* eof
                 rightOpP = do
                         xs <- some (try prefixOpP <|> rightAssocOpP)
                         x  <- belowOpP
-                        return (foldr go x xs)
+                        return (foldr' go x xs)
                     where
                         go :: (Seq ExprSpan, SrcSpan) -> ExprSpan -> ExprSpan
                         go (xs, sp) x = Apply (xs |> x) (srcSpanSpan sp (x^.exp_annot))
@@ -444,7 +444,7 @@ generateOpP = topOpP <* eof
                 leftOpP = do
                         x  <- belowOpP
                         xs <- some (try postfixOpP <|> leftAssocOpP)
-                        return (foldl go x xs)
+                        return (foldl' go x xs)
                     where
                         go :: ExprSpan -> (Seq ExprSpan, SrcSpan) -> ExprSpan
                         go x (xsS, sp) = Apply (fromList xs) sp
@@ -467,7 +467,7 @@ generateOpP = topOpP <* eof
 
         closedPartOpP :: ConSnoc f ExprSpan => OperatorParts -> OpP (f ExprSpan, SrcSpan, String)
         closedPartOpP prts = do
-                (spn, xs) <- foldr go (pure (SrcSpanNoInfo, empty)) (closedPart prts)
+                (spn, xs) <- foldr' go (pure (SrcSpanNoInfo, empty)) (closedPart prts)
                 return (xs, spn, opStr prts)
             where
                 go :: Alternative f => OperatorPart -> OpP (SrcSpan, f ExprSpan) -> OpP (SrcSpan, f ExprSpan)

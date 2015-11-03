@@ -24,10 +24,13 @@ import           Language.Angler.ScopedTable
 import           Control.Lens
 import           Control.Monad.State         (MonadState)
 import           Control.Monad.Except        (throwError)
+
+import           Data.Foldable               (foldl')
+
 import           Prelude                     hiding (lookup)
 
 foldActions :: Monad m => [a -> m a] -> a -> m a
-foldActions acts x = foldl (>>=) (return x) acts
+foldActions acts x = foldl' (>>=) (return x) acts
 
 --------------------------------------------------------------------------------
 

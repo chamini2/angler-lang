@@ -28,7 +28,7 @@ import           Control.Monad.Trans         (lift)
 import           Data.Function               (on)
 import           Data.Default                (Default(..))
 
-import           Data.Foldable               (toList)
+import           Data.Foldable               (foldl', foldr', toList)
 import           Data.List                   (sortBy)
 import           Data.Sequence               (Seq, fromList)
 
@@ -70,7 +70,7 @@ opStr :: OperatorRepr -> String
 opStr = concatMap (maybe "_" id)
 
 strOp :: String -> OperatorRepr
-strOp = foldr go []
+strOp = foldr' go []
     where
         go :: Char -> OperatorRepr -> OperatorRepr
         go c ps = case (c,ps) of
@@ -222,7 +222,7 @@ precTable = gets (buildTable . sort . fmap snd . ST.toList)
         previewOpPrec = preview (op_fix.fix_prec)
 
         buildTable :: [Operator] -> PrecTable
-        buildTable = fst . foldr go ([Map.empty], Nothing)
+        buildTable = fst . foldr' go ([Map.empty], Nothing)
             where
                 go :: Operator -> (PrecTable, Maybe Int) -> (PrecTable, Maybe Int)
                 go op (tab, mprec) = (go' tab, opPrec)
@@ -319,7 +319,7 @@ generateOpParser :: OpParser ExprSpan
 generateOpParser = topP <* eof
     where
         closedPartP :: ConSnoc f ExprSpan => OperatorRepr -> OpParser (SrcSpan, f ExprSpan)
-        closedPartP = foldr go (pure (SrcSpanNoInfo, empty)) . closedPart
+        closedPartP = foldr' go (pure (SrcSpanNoInfo, empty)) . closedPart
             where
                 go :: Alternative f => OperatorPart
                                     -> OpParser (SrcSpan, f ExprSpan)
@@ -343,7 +343,7 @@ generateOpParser = topP <* eof
                         clean = dropWhile isNothing
 
         topP :: OpParser ExprSpan
-        topP = precTable >>= choice . foldr go [bottomP]
+        topP = precTable >>= choice . foldr' go [bottomP]
             where
                 -- keep every parser level, passing them as the *hole*
                 -- parser to use in evey upper level
@@ -412,7 +412,7 @@ generateOpParser = topP <* eof
                 rightP = do
                         xs <- some (try prefixP <|> rightAssocP)
                         x  <- holeP
-                        return (foldr go x xs)
+                        return (foldr' go x xs)
                     where
                         go :: (ExprSpan, Seq ExprSpan) -> ExprSpan -> ExprSpan
                         go (op, xs) x = let xs' = xs |> x
@@ -442,7 +442,7 @@ generateOpParser = topP <* eof
                 leftP = do
                         x  <- holeP
                         xs <- some (try postfixP <|> leftAssocP)
-                        return (foldl go x xs)
+                        return (foldl' go x xs)
                     where
                         go :: ExprSpan -> (ExprSpan, Seq ExprSpan) -> ExprSpan
                         go x (op, xs) = let xs' = x <| xs
