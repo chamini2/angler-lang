@@ -23,7 +23,7 @@ import           Control.Monad.Trans         (lift)
 
 import           Data.Char                   (isSpace)
 import           Data.Default                (Default(..))
-import           Data.Foldable               (toList)
+import           Data.Foldable               (foldl', foldr', toList)
 import           Data.Function               (on)
 import           Data.List                   (sortBy)
 import           Data.Map.Strict             (Map)
@@ -208,10 +208,10 @@ mixfixTypeBind :: TypeBindSpan -> Mixfix TypeBindSpan
 mixfixTypeBind = mapMOf typ_type mixfixWhere
 
 mixfixArgument :: ArgumentSpan -> Mixfix ArgumentSpan
-mixfixArgument arg = exprArg <$> mixfixExpression (argExpr arg)
+mixfixArgument = (exprArg <$>) . mixfixExpression . argExpr
     where
         argExpr :: ArgumentSpan -> ExpressionSpan
-        argExpr arg' = case arg' of
+        argExpr arg = case arg of
                 VarBinding idn an  -> Var idn an
                 DontCare an        -> Lit (error "MixfixParser.mixfixArgument: DontCare") an
                 ApplyBinding xs an -> Apply (fmap argExpr xs) an
