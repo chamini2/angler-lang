@@ -65,4 +65,4 @@ executable angler
   -- ghc-options:          -Wall -Werror
 
   -- profiling options
-  ghc-options:          -Wall -O2 -threaded -fprof-auto "-with-rtsopts=-N -p -s -h -i0.1"
+  ghc-options:          -Wall -j4 -O2 -threaded -fprof-auto "-with-rtsopts=-N -p -s -h -i0.1"
