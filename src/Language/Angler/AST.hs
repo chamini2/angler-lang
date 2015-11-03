@@ -180,14 +180,18 @@ instance Eq (Fixity a) where
         (==) l r = l <= r && r <= l
 
 instance Ord (Fixity a) where
-        (<=) l r = constr l <= constr r
-            where
-                constr :: Fixity a -> String
-                constr fix = case fix of
-                        Infix a _ _ -> "Infix" ++ show a
-                        Prefix  _ _ -> "Prefix"
-                        Postfix _ _ -> "Postfix"
-                        Closedfix _ -> "Closedfix"
+        (<=) l r = case (l,r) of
+                (Infix l' _ _, Infix r' _ _) -> l' <= r'
+                (Infix _ _ _ , _           ) -> False
+
+                (Prefix _ _  , Infix _ _ _ ) -> True
+                (Prefix _ _  , Prefix _ _  ) -> True
+                (Prefix _ _  , _           ) -> False
+
+                (Postfix _ _ , Closedfix _ ) -> False
+                (Postfix _ _ , _           ) -> True
+
+                (Closedfix _ , _           ) -> True
 
 data Argument a
   = VarBinding
