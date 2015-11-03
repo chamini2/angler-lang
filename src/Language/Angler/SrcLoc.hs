@@ -58,26 +58,8 @@ locMove (SrcLoc file l c) chr = case chr of
 data SrcSpan
   = SrcSpanNoInfo
   | SrcSpanPoint FilePath Int Int
-        -- { srcSpanFile   :: FilePath
-        -- , srcSpanLine   :: Int
-        -- , srcSpanCol    :: Int
-        -- }
   | SrcSpanOneLine FilePath Int Int Int
-        -- { srcSpanFile   :: FilePath
-        -- , srcSpanLine   :: Int
-        -- , srcSpanSCol   :: Int
-        -- , srcSpanECol   :: Int
-        -- }
   | SrcSpanMultiline FilePath Int Int Int Int
-        -- { srcSpanFile   :: FilePath
-        -- , srcSpanSLine  :: Int
-        -- , srcSpanSCol   :: Int
-        -- , srcSpanELine  :: Int
-        -- , srcSpanECol   :: Int
-        -- }
-        -----
-
-        -----
 
 spn_file :: Lens' SrcSpan FilePath
 spn_file spn_fn spn = wrap <$> spn_fn (srcSpanFile spn)
