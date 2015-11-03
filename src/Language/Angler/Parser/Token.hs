@@ -136,8 +136,8 @@ instance Show Token where
 
 instance PrettyShow Token where
         pshow tk = case tk of
-                TkVLCurly          -> string "{^" >> line
-                TkVRCurly          -> line >> string "^}"
+                TkVLCurly          -> string "{^" >> raise >> line
+                TkVRCurly          -> lower >> line >> string "^}"
                 TkVSemicolon       -> string "^;" >> line
                 _                  -> string (show tk)
 
