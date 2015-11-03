@@ -174,6 +174,8 @@ mixfixArgument = (exprArg <$>) . mixfixExpression . argExpr
                 ApplyBinding xs an -> Apply (fmap argExpr xs) an
         exprArg :: ExpressionSpan -> ArgumentSpan
         exprArg expr = case expr of
+                -- this is a bit hard-coded, since the Var "_" cannot come from
+                -- the lexer/parser, so we *know* it's the DontCare
                 Var "_" an  -> DontCare an
                 Var idn an  -> VarBinding idn an
                 Apply xs an -> ApplyBinding (fmap exprArg xs) an
