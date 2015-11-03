@@ -78,7 +78,6 @@ data Operator
   = Operator
         { _op_idn       :: String
         , _op_fix       :: Fixity ()
-        , _op_prec      :: Maybe Int
         }
   deriving Show
 
@@ -106,19 +105,19 @@ scopedTabPrecedenceTab :: ScopedTable Operator -> PrecedenceTable
 scopedTabPrecedenceTab = buildTable . sort . fmap snd . ST.toList
     where
         sort :: [Operator] -> [Operator]
-        sort = sortBy (compare `on` view op_prec)
+        sort = sortBy (compare `on` opPrec)
+
+        opPrec :: Operator -> Maybe Int
+        opPrec = preview (op_fix.fix_prec)
 
         buildTable :: [Operator] -> PrecedenceTable
         buildTable = fst . foldr go ([Map.empty], Nothing)
 
         go :: Operator -> (PrecedenceTable, Maybe Int) -> (PrecedenceTable, Maybe Int)
-        go op (tab, mprec) = (go' tab, opPrec)
+        go op (tab, mprec) = (go' tab, opPrec op)
             where
-                opPrec :: Maybe Int
-                opPrec = view op_prec op
-
                 go' :: PrecedenceTable -> PrecedenceTable
-                go' = if opPrec < mprec
+                go' = if opPrec op < mprec
                         then cons newLvl
                         else over _head addOp
                     where
@@ -163,10 +162,10 @@ mixfixBodyStmt stmt = case stmt of
         FunctionDef {} -> do
                 stmt' <- mapMOf fdef_args mixfixArgument stmt
                 mapMOf fdef_expr mixfixWhere stmt'
-        OperatorDef idn fix mprec spn -> do
+        OperatorDef idn fix spn -> do
                 let idn' = view idn_str idn
                     fix' = set fix_annot () fix
-                merr <- safeInsertSc idn' (Operator idn' fix' mprec)
+                merr <- safeInsertSc idn' (Operator idn' fix')
                 case merr of
                         Just err -> throwError [Loc spn err]
                         _        -> return ()
@@ -363,7 +362,6 @@ generateOpP = topOpP <* eof
         bottomOpP = do
                 xs <- liftA fromList (some basicToken)
                 return (Apply xs (xsSpan xs))
-                -- return (Apply xs (xsSpan (trace ("+++++\n" ++ show xs ++ "\n+++++") xs)))
             where
                 -- This tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
@@ -413,7 +411,7 @@ generateOpP = topOpP <* eof
                         return (Apply xs sp)
                     where
                         nonOps :: [ OperatorParts ]
-                        nonOps = searchOps (Infix NonAssoc ()) lvl
+                        nonOps = searchOps (Infix NonAssoc 0 ()) lvl
 
                 nonInfixOpP :: Fixity () -> OpP (Seq ExprSpan, SrcSpan)
                 nonInfixOpP fix = tryOpsOpP (searchOps fix lvl) $ \op -> do
@@ -430,7 +428,7 @@ generateOpP = topOpP <* eof
                         go (xs, sp) x = Apply (xs |> x) (srcSpanSpan sp (x^.exp_annot))
 
                         prefixOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        prefixOpP = nonInfixOpP (Prefix ())
+                        prefixOpP = nonInfixOpP (Prefix 0 ())
 
                         rightAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
                         rightAssocOpP = tryOpsOpP rightOps $ \op -> do
@@ -440,7 +438,7 @@ generateOpP = topOpP <* eof
                                 return (Var opName sp <| pure leftH <|> clxs, sp)
                             where
                                 rightOps :: [ OperatorParts ]
-                                rightOps = searchOps (Infix RightAssoc ()) lvl
+                                rightOps = searchOps (Infix RightAssoc 0 ()) lvl
 
                 leftOpP :: OpP ExprSpan
                 leftOpP = do
@@ -455,7 +453,7 @@ generateOpP = topOpP <* eof
                                 xs' = toList xsS
 
                         postfixOpP :: OpP (Seq ExprSpan, SrcSpan)
-                        postfixOpP = nonInfixOpP (Postfix ())
+                        postfixOpP = nonInfixOpP (Postfix 0 ())
 
                         leftAssocOpP :: OpP (Seq ExprSpan, SrcSpan)
                         leftAssocOpP = tryOpsOpP leftOps $ \op -> do
@@ -465,23 +463,28 @@ generateOpP = topOpP <* eof
                                 return (Var opName sp <| (clxs |> rightH), sp)
                             where
                                 leftOps :: [ OperatorParts ]
-                                leftOps = searchOps (Infix LeftAssoc ()) lvl
+                                leftOps = searchOps (Infix LeftAssoc 0 ()) lvl
 
         closedPartOpP :: ConSnoc f ExprSpan => OperatorParts -> OpP (f ExprSpan, SrcSpan, String)
         closedPartOpP prts = do
-                xs <- foldr go (pure empty) (closedPart prts)
-                return (xs, xsSpan xs, opStr prts)
-                -- return (xs, xsSpan (trace ("-----\n" ++ show prts ++ "\n-----") xs), opStr prts)
+                (spn, xs) <- foldr go (pure (SrcSpanNoInfo, empty)) (closedPart prts)
+                return (xs, spn, opStr prts)
             where
-                go :: Alternative f => OperatorPart -> OpP (f ExprSpan) -> OpP (f ExprSpan)
-                go mprt act = (<|>) <$> prtOpP mprt <*> act
-                prtOpP :: Alternative f => OperatorPart -> OpP (f ExprSpan)
-                prtOpP mprt = case mprt of
-                        Just prt -> pure empty <* var prt
-                        _        -> pure <$> topOpP
+                go :: Alternative f => OperatorPart -> OpP (SrcSpan, f ExprSpan) -> OpP (SrcSpan, f ExprSpan)
+                go mpart act = do
+                        (xsp, mx) <- partP mpart
+                        (asp, xs) <- act
+                        return (srcSpanSpan xsp asp, mx <|> xs)
+                partP :: Alternative f => OperatorPart -> OpP (SrcSpan, f ExprSpan)
+                partP mprt = case mprt of
+                        Just prt -> do
+                                x <- var prt
+                                return (x^.exp_annot, empty)
+                        Nothing  -> do
+                                x <- topOpP
+                                return (x^.exp_annot, pure x)
                 closedPart :: OperatorParts -> OperatorParts
                 closedPart = reverse . clean . reverse . clean
-                -- closedPart = (\prts -> trace ("*****\n" ++ show prts ++ "\n*****") prts) . reverse . clean . reverse . clean
                     where
                         clean = dropWhile isNothing
 

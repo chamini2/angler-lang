@@ -326,7 +326,6 @@ generateOpParser = topP <* eof
                         (xsp, mx) <- partP mpart
                         (asp, xs) <- act
                         return (srcSpanSpan xsp asp, mx <|> xs)
-                -- go mpart act = partP mpart <|> act
                 partP :: Alternative f => OperatorPart -> OpParser (SrcSpan, f ExprSpan)
                 partP mprt = case mprt of
                         Just prt -> do
