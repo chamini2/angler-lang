@@ -131,12 +131,40 @@ mixfixExprWhere whre = whre & whre_insd %%~ mixfixExpression
                           >>= whre_body._Just %%~ mixfixBody
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
-mixfixExpression = mixfixExpressionList . pure
+mixfixExpression expr = case expr of
+        Var _ _ -> return expr
+        Lit _ _ -> return expr
+        Apply xs _ -> mixfixExpressionList (toList xs)
+        Lambda arg x an -> do
+                arg' <- mixfixArgument arg
+                x'   <- mixfixExpression x
+                return (Lambda arg' x' an)
+        Let body x an -> do
+                body' <- mixfixBody body
+                x'    <- mixfixExpression x
+                return (Let body' x' an)
+        Forall typs x an -> do
+                typs' <- mapM mixfixTypeBind typs
+                x'    <- mixfixExpression x
+                return (Forall typs' x' an)
+        Exists typ x an -> do
+                typ' <- mixfixTypeBind typ
+                x'   <- mixfixExpression x
+                return (Exists typ' x' an)
+        Select typ an -> do
+                typ' <- mixfixTypeBind typ
+                return (Select typ' an)
+        ImplicitExpr imps an -> do
+                imps' <- mapM mixfixImplicit imps
+                return (ImplicitExpr imps' an)
+
 
 mixfixExpressionList :: [ExpressionSpan] -> LoadPrecTable ExpressionSpan
 mixfixExpressionList exprs = do
-        let spn = exprListSpan exprs
-        eith <- runOpParser (generateOpParser (exprListVars exprs)) spn exprs
+        let spn  = exprListSpan exprs
+            vars = exprListVars exprs
+        exs <- mapM mixfixExpression exprs
+        eith <- runOpParser (generateOpParser vars) spn exs
         flattenExpression <$> case eith of
                 Left perr -> do
                         let msgs = errorMessages perr
@@ -220,39 +248,10 @@ exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
 exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
 
 satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpParser ExprSpan
-satisfy' guard = token nextPos guard >>= handleExprSpan
+satisfy' guard = token nextPos guard
     where
         nextPos :: Int -> SourcePos -> ExprSpan -> SourcePos
         nextPos _tab _p = spanPos . view exp_annot
-
-        -- How to handle any specific expression
-        handleExprSpan :: ExprSpan -> OpParser ExprSpan
-        handleExprSpan expr = case expr of
-                Var _ _ -> return expr
-                Lit _ _ -> return expr
-                Apply xs _ -> (lift . mixfixExpressionList . toList) xs
-                Lambda arg x an -> lift $ do
-                        arg' <- mixfixArgument arg
-                        x'   <- mixfixExpression x
-                        return (Lambda arg' x' an)
-                Let body x an -> lift $ do
-                        body' <- mixfixBody body
-                        x'    <- mixfixExpression x
-                        return (Let body' x' an)
-                Forall typs x an -> lift $ do
-                        typs' <- mapM mixfixTypeBind typs
-                        x'    <- mixfixExpression x
-                        return (Forall typs' x' an)
-                Exists typ x an -> lift $ do
-                        typ' <- mixfixTypeBind typ
-                        x'   <- mixfixExpression x
-                        return (Exists typ' x' an)
-                Select typ an -> lift $ do
-                        typ' <- mixfixTypeBind typ
-                        return (Select typ' an)
-                ImplicitExpr imps an -> lift $ do
-                        imps' <- mapM mixfixImplicit imps
-                        return (ImplicitExpr imps' an)
 
 satisfy :: [Message] -> (ExprSpan -> Bool) -> OpParser ExprSpan
 satisfy errs guard = satisfy' testExpr
