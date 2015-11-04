@@ -134,7 +134,40 @@ mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
 mixfixExpression expr = case expr of
         Var _ _ -> return expr
         Lit _ _ -> return expr
-        Apply xs _ -> mixfixExpressionList (toList xs)
+        Apply xs an -> do
+                xs'  <- toList <$> mapM mixfixExpression xs
+                eith <- runOpParser (generateOpParser (exprListVars xs)) an xs'
+                flattenExpression <$> case eith of
+                        Left perr -> do
+                                let msgs = errorMessages perr
+                                    eSpn = posSpan (errorPos perr)
+                                throwError (fmap (Loc eSpn . messageError) msgs)
+                        Right x -> return x
+            where
+                posSpan :: SourcePos -> SrcSpan
+                posSpan p = SrcSpanPoint (sourceName p) (sourceLine p) (sourceColumn p)
+
+                exprListVars :: Foldable f =>  f ExpressionSpan -> [String]
+                exprListVars = foldl' go []
+                    where
+                        go :: [String] -> ExpressionSpan -> [String]
+                        go parts expr = case expr of
+                                Var name _ -> name : parts
+                                _          -> parts
+
+                flattenExpression :: ExpressionSpan -> ExpressionSpan
+                flattenExpression expr' = case expr' of
+                        Apply xs an -> case toList xs of
+                                [x] -> flattenExpression x
+                                _   -> Apply (fmap flattenExpression xs) an
+                        _ -> expr'
+
+                messageError :: Message -> Error
+                messageError msg = CheckError $ case msg of
+                        Expected   str -> CErrExpected str
+                        Unexpected str -> CErrUnexpected str
+                        Message    str -> CErr str
+
         Lambda arg x an -> do
                 arg' <- mixfixArgument arg
                 x'   <- mixfixExpression x
@@ -157,36 +190,6 @@ mixfixExpression expr = case expr of
         ImplicitExpr imps an -> do
                 imps' <- mapM mixfixImplicit imps
                 return (ImplicitExpr imps' an)
-
-
-mixfixExpressionList :: [ExpressionSpan] -> LoadPrecTable ExpressionSpan
-mixfixExpressionList exprs = do
-        let spn  = exprListSpan exprs
-            vars = exprListVars exprs
-        exs <- mapM mixfixExpression exprs
-        eith <- runOpParser (generateOpParser vars) spn exs
-        flattenExpression <$> case eith of
-                Left perr -> do
-                        let msgs = errorMessages perr
-                            eSpn = posSpan (errorPos perr)
-                        throwError (fmap (Loc eSpn . messageError) msgs)
-                Right x -> return x
-    where
-        posSpan :: SourcePos -> SrcSpan
-        posSpan pos = SrcSpanPoint (sourceName pos) (sourceLine pos) (sourceColumn pos)
-
-        flattenExpression :: ExpressionSpan -> ExpressionSpan
-        flattenExpression expr' = case expr' of
-                Apply xs an -> case toList xs of
-                        [x] -> flattenExpression x
-                        _   -> Apply (fmap flattenExpression xs) an
-                _ -> expr'
-
-        messageError :: Message -> Error
-        messageError msg = CheckError $ case msg of
-                Expected   str -> CErrExpected str
-                Unexpected str -> CErrUnexpected str
-                Message    str -> CErr str
 
 mixfixTypeBind :: TypeBindSpan -> LoadPrecTable TypeBindSpan
 mixfixTypeBind = typ_type %%~ mixfixExprWhere
@@ -225,14 +228,6 @@ runOpParser act spn = runParserT (setPosition (spanPos spn) >> act) filepath
 
 ----------------------------------------
 -- DSL connections
-
-exprListVars :: Foldable f =>  f ExpressionSpan -> [String]
-exprListVars = foldl' go []
-    where
-        go :: [String] -> ExpressionSpan -> [String]
-        go parts expr = case expr of
-                Var name _ -> name : parts
-                _          -> parts
 
 spanPos :: SrcSpan -> SourcePos
 spanPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
