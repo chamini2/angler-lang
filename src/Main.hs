@@ -23,14 +23,12 @@ import           Data.Default                  (Default(..))
 import           Data.Foldable                 (toList)
 
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
-import           System.Clock                  (Clock(..), diffTimeSpec, getTime,
-                                                timeSpecAsNanoSecs)
+import           System.Clock                  (Clock(..), diffTimeSpec, getTime, timeSpecAsNanoSecs)
 import           System.Directory              (doesFileExist)
 import           System.Exit                   (exitWith, ExitCode(..))
 import           System.Environment            (getArgs)
 import           System.FilePath               ((</>), addExtension, pathSeparator)
-import           System.IO                     (Handle, IOMode(..), hGetContents,
-                                                openFile, stdin)
+import           System.IO                     (Handle, IOMode(..), hGetContents, openFile, stdin)
 
 import           Prelude                       hiding (IOError, elem)
 import qualified Prelude                       as P (elem)
@@ -48,7 +46,7 @@ main = do
 
         (filepath, handle) <- case (nonOptions, view opt_stdin options) of
                 ([f], False) -> do
-                        h <- openModule f ((pshowError . IOError . OpenModule) f)
+                        h <- (openModule f . pshowError . IOError . OpenModule) f
                         return (f, h)
                 ([] , True ) -> return ("<stdin>", stdin)
                 ([] , False) -> pshowError (IOError NoModules)

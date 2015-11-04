@@ -6,8 +6,7 @@ import           Control.Lens
 
 import           Data.Default                  (Default(..))
 
-import           System.Console.GetOpt         (ArgDescr(..), OptDescr(..),
-                                                usageInfo)
+import           System.Console.GetOpt         (ArgDescr(..), OptDescr(..), usageInfo)
 import           System.Exit                   (exitWith, ExitCode(..))
 import           System.Directory              (doesDirectoryExist)
 
