@@ -14,7 +14,10 @@ import qualified Language.Angler.ScopedTable   as ST (empty)
 import           PrettyShow
 
 import           Control.Lens
+
 import           Control.Monad                 (forM, unless, when)
+
+import           Control.Exception             (evaluate)
 
 import           Data.Default                  (Default(..))
 import           Data.Foldable                 (toList)
@@ -69,16 +72,16 @@ readModule options filepath handle = do
 
         when (view opt_tokens options || view opt_verbose options) $ do
                 printStage "lexer" Nothing
-                (_,secs) <- timeIt $ case lexProgram input loc of
-                        Right (ts,_) -> putStrLn (showTokens ts)
+                (_,secs) <- stopwatch $ case lexProgram input loc of
+                        Right (ts,_) -> evaluate ts >>= putStrLn . showTokens
                             where
                                 showTokens :: [Located Token] -> String
                                 showTokens = prettyShowTokens . fmap (view loc_insd)
                         Left  _err   -> return ()
                 printStage "lexer" (Just secs)
 
-        (ast,secs) <- timeIt $ case parseProgram input loc of
-                Right (ast,ws) -> mapM_ print ws >> return ast
+        (ast,secs) <- stopwatch $ case parseProgram input loc of
+                Right (ast,ws) -> mapM_ print ws >> evaluate ast
                 Left  err      -> pshowError err
 
         -- imprtsTables <- readImports opts ast
@@ -88,9 +91,9 @@ readModule options filepath handle = do
                 putStrLn (prettyShow ast)
                 printStage "parser" (Just secs)
 
-        (ast,secs) <- timeIt $ case parseMixfix ast of
-                Right ast' -> return ast'
-                Left  err  -> pshowErrors err >> return ast
+        (ast,secs) <- stopwatch $ case parseMixfix ast of
+                Right ast -> evaluate ast
+                Left  err -> pshowErrors err >> return ast
 
         when (view opt_mixfix options || view opt_verbose options) $ do
                 printStage "mixfix parser" Nothing
@@ -106,8 +109,8 @@ readModule options filepath handle = do
                         Nothing   -> ""
                 putStrLn ("\n********** " ++ stage ++ secs ++ "\n")
 
-        timeIt :: IO a -> IO (a, Double)
-        timeIt act = do
+        stopwatch :: IO a -> IO (a, Double)
+        stopwatch act = do
                 start <- getTime ProcessCPUTime
                 res   <- act
                 end   <- getTime ProcessCPUTime
