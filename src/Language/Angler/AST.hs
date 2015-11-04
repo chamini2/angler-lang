@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Language.Angler.AST where
 
@@ -7,12 +8,14 @@ import           Language.Angler.SrcLoc
 import           PrettyShow
 
 import           Control.Lens
-import           Control.Monad           (when)
+import           Control.Monad               (when)
 
-import           Data.Foldable           (toList)
-import           Data.List               (intercalate)
-import           Data.Maybe              (isJust)
-import           Data.Sequence           (Seq)
+import           Data.Foldable               (toList)
+import           Data.List                   (intercalate)
+import           Data.Maybe                  (isJust)
+import           Data.Sequence               (Seq)
+
+import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 data Identifier a
   = Identifier
@@ -141,6 +144,12 @@ data Expression a
         }
   deriving Show
 type ExpressionSpan = Expression SrcSpan
+
+instance Show a => ShowToken (Expression a) where
+        showToken = prettyShow
+
+instance Show a => ShowToken [Expression a] where
+        showToken = concatMap prettyShow
 
 data TypeBind a
   = TypeBind

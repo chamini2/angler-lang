@@ -222,12 +222,6 @@ type ConSnoc f a = (Alternative f, Cons (f a) (f a) a a, Snoc (f a) (f a) a a)
 exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
 exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
 
-instance Show a => ShowToken (Expression a) where
-        showToken = prettyShow
-
-instance Show a => ShowToken [Expression a] where
-        showToken = concatMap prettyShow
-
 satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpParser ExprSpan
 satisfy' guard = token nextPos guard >>= handleExprSpan
     where
