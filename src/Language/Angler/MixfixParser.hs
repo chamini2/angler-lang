@@ -10,7 +10,7 @@ module Language.Angler.MixfixParser
 import           Language.Angler.AST
 import           Language.Angler.Error       hiding (ParseError)
 import           Language.Angler.Monad
-import           Language.Angler.ScopedTable hiding (empty, toList)
+import           Language.Angler.ScopedTable hiding (elem, empty, toList)
 import qualified Language.Angler.ScopedTable as ST
 import           Language.Angler.SrcLoc
 
@@ -137,7 +137,9 @@ mixfixExprWhere whre = whre & whre_insd %%~ mixfixExpression
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
 mixfixExpression expr = do
-        eith <- runOpParser generateOpParser (view exp_annot expr) [expr]
+        let input = [expr]
+            spn   = view exp_annot expr
+        eith <- runOpParser (generateOpParser (exprListVars input)) spn input
         flattenExpression <$> case eith of
                 Left perr -> do
                         let msgs = errorMessages perr
@@ -199,6 +201,14 @@ runOpParser act spn = runParserT (setPosition (spanPos spn) >> act) filepath
 ----------------------------------------
 -- DSL connections
 
+exprListVars :: Foldable f =>  f ExpressionSpan -> [String]
+exprListVars = foldl' go []
+    where
+        go :: [String] -> ExpressionSpan -> [String]
+        go parts expr = case expr of
+                Var name _ -> name : parts
+                _          -> parts
+
 spanPos :: SrcSpan -> SourcePos
 spanPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
 
@@ -211,39 +221,6 @@ mapTryChoice ops act = choice (fmap (try . act) ops)
 type ConSnoc f a = (Alternative f, Cons (f a) (f a) a a, Snoc (f a) (f a) a a)
 exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
 exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
-
-precTable :: OpParser PrecTable
-precTable = gets (buildTable . sort . fmap snd . ST.toList)
-    where
-        sort :: [Operator] -> [Operator]
-        sort = sortBy (compare `on` previewOpPrec)
-
-        previewOpPrec :: Operator -> Maybe Int
-        previewOpPrec = preview (op_fix.fix_prec)
-
-        buildTable :: [Operator] -> PrecTable
-        buildTable = fst . foldr' go ([Map.empty], Nothing)
-            where
-                go :: Operator -> (PrecTable, Maybe Int) -> (PrecTable, Maybe Int)
-                go op (tab, mprec) = (go' tab, opPrec)
-                    where
-                        opPrec :: Maybe Int
-                        opPrec = previewOpPrec op
-
-                        go' :: PrecTable -> PrecTable
-                        go' = if opPrec < mprec
-                                then cons newLvl
-                                else over _head consOp
-                            where
-                                newLvl :: PrecLevel
-                                newLvl = uncurry Map.singleton opInfo
-
-                                consOp :: PrecLevel -> PrecLevel
-                                consOp = uncurry (Map.insertWith (++)) opInfo
-
-                                opInfo :: (Fixity (), [OperatorRepr])
-                                opInfo = (view op_fix op, [view op_prts op])
-
 
 instance Show a => ShowToken (Expression a) where
         showToken = prettyShow
@@ -268,7 +245,7 @@ satisfy' guard = token nextPos guard >>= handleExprSpan
 
                         setInput (toList xs)
                         setPosition (spanPos an)        -- this probably does nothing
-                        x' <- generateOpParser
+                        x' <- generateOpParser (exprListVars xs)
 
                         setInput inp
                         setPosition pos
@@ -315,8 +292,8 @@ var str = satisfy [Expected str] sameVar
 ----------------------------------------
 -- Parser generator
 
-generateOpParser :: OpParser ExprSpan
-generateOpParser = topP <* eof
+generateOpParser :: [String] -> OpParser ExprSpan
+generateOpParser inputVars = topP <* eof
     where
         closedPartP :: ConSnoc f ExprSpan => OperatorRepr -> OpParser (SrcSpan, f ExprSpan)
         closedPartP = foldr' go (pure (SrcSpanNoInfo, empty)) . closedPart
@@ -341,6 +318,47 @@ generateOpParser = topP <* eof
                     where
                         clean :: [Maybe String] -> [Maybe String]
                         clean = dropWhile isNothing
+
+        precTable :: OpParser PrecTable
+        precTable = gets (buildTable . sort . filterByParts . fmap snd . ST.toList)
+            where
+                filterByParts :: [Operator] -> [Operator]
+                filterByParts = filter hasPart
+                    where
+                        hasPart :: Operator -> Bool
+                        hasPart = all (flip elem inputVars) . opPrts
+                            where
+                                opPrts = fmap fromJust . filter isJust . view op_prts
+
+                sort :: [Operator] -> [Operator]
+                sort = sortBy (compare `on` previewOpPrec)
+
+                previewOpPrec :: Operator -> Maybe Int
+                previewOpPrec = preview (op_fix.fix_prec)
+
+                buildTable :: [Operator] -> PrecTable
+                buildTable = fst . foldr' go ([Map.empty], Nothing)
+                    where
+                        go :: Operator -> (PrecTable, Maybe Int) -> (PrecTable, Maybe Int)
+                        go op (tab, mprec) = (go' tab, opPrec)
+                            where
+                                opPrec :: Maybe Int
+                                opPrec = previewOpPrec op
+
+                                go' :: PrecTable -> PrecTable
+                                go' = if opPrec < mprec
+                                        then cons newLvl
+                                        else over _head consOp
+                                    where
+                                        newLvl :: PrecLevel
+                                        newLvl = uncurry Map.singleton opInfo
+
+                                        consOp :: PrecLevel -> PrecLevel
+                                        consOp = uncurry (Map.insertWith (++)) opInfo
+
+                                        opInfo :: (Fixity (), [OperatorRepr])
+                                        opInfo = (view op_fix op, [view op_prts op])
+
 
         topP :: OpParser ExprSpan
         topP = precTable >>= choice . foldr' go [bottomP]
