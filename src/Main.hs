@@ -20,6 +20,8 @@ import           Data.Default                  (Default(..))
 import           Data.Foldable                 (toList)
 
 import           System.Console.GetOpt         (ArgOrder(..), getOpt)
+import           System.Clock                  (Clock(..), diffTimeSpec, getTime,
+                                                timeSpecAsNanoSecs)
 import           System.Directory              (doesFileExist)
 import           System.Exit                   (exitWith, ExitCode(..))
 import           System.Environment            (getArgs)
@@ -66,34 +68,52 @@ readModule options filepath handle = do
         let loc = startLoc filepath
 
         when (view opt_tokens options || view opt_verbose options) $ do
-                putStr "\n\n***** lexer\n\n"
-                case lexProgram input loc of
+                printStage "lexer" Nothing
+                (_,secs) <- timeIt $ case lexProgram input loc of
                         Right (ts,_) -> putStrLn (showTokens ts)
                             where
                                 showTokens :: [Located Token] -> String
                                 showTokens = prettyShowTokens . fmap (view loc_insd)
                         Left  _err   -> return ()
+                printStage "lexer" (Just secs)
 
-
-        ast <- case parseProgram input loc of
+        (ast,secs) <- timeIt $ case parseProgram input loc of
                 Right (ast,ws) -> mapM_ print ws >> return ast
                 Left  err      -> pshowError err
 
         -- imprtsTables <- readImports opts ast
 
         when (view opt_ast options || view opt_verbose options) $ do
-                putStr "\n\n***** parser\n\n"
+                printStage "parser" Nothing
                 putStrLn (prettyShow ast)
+                printStage "parser" (Just secs)
 
-        ast <- case parseMixfix ast of
+        (ast,secs) <- timeIt $ case parseMixfix ast of
                 Right ast' -> return ast'
                 Left  err  -> pshowErrors err >> return ast
 
         when (view opt_mixfix options || view opt_verbose options) $ do
-                putStr "\n\n***** after mixfix parser\n\n"
+                printStage "mixfix parser" Nothing
                 putStrLn (prettyShow ast)
+                printStage "mixfix parser" (Just secs)
 
         return (ST.empty, ast)
+    where
+        printStage :: String -> Maybe Double -> IO ()
+        printStage stage msecs = do
+                let secs = case msecs of
+                        Just secs -> "(" ++ show secs ++ " s)"
+                        Nothing   -> ""
+                putStrLn ("\n********** " ++ stage ++ secs ++ "\n")
+
+        timeIt :: IO a -> IO (a, Double)
+        timeIt act = do
+                start <- getTime ProcessCPUTime
+                res   <- act
+                end   <- getTime ProcessCPUTime
+                let nanoSecs = timeSpecAsNanoSecs (diffTimeSpec start end)
+                    secs = fromInteger nanoSecs / (10^9)
+                return (res, secs)
     {-where
         readImports :: Options -> ModuleSpan -> IO [(SymbolTableSpan, ModuleSpan)]
         readImports opts ast = forM (imports ast) $ \(Import path as mfs _) -> do
@@ -135,7 +155,7 @@ readModule options filepath handle = do
                                 '.' -> pathSeparator : path
                                 _   -> c             : path-}
 
--- maybe receive the ExitCode number instead of just plugging one in
+-- maybe receive the ExitCode number instead of just hard-coding one in
 strError :: String -> IO a
 strError str = putStrLn str >> exitWith (ExitFailure 1)
 

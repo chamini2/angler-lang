@@ -46,6 +46,8 @@ executable angler
                                 -- alex
                         , containers
                                 -- alex, Data.Sequence
+                        , clock
+                                -- time measurement, System.Clock
                         , data-default
                                 -- Data.Default
                         , directory
