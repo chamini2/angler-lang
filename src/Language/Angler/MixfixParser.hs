@@ -21,7 +21,6 @@ import           Control.Lens                hiding (op, below, parts)
 import           Control.Monad               (when)
 import           Control.Monad.Except        (Except, runExcept)
 import           Control.Monad.State         (StateT, runStateT, gets)
-import           Control.Monad.Trans         (lift)
 
 import           Data.Function               (on)
 import           Data.Default                (Default(..))
@@ -37,10 +36,8 @@ import qualified Data.Map.Strict             as Map
 import           Text.Megaparsec             (ParsecT, runParserT, choice, eof, token, try)
 import           Text.Megaparsec.Error       (ParseError, Message(..), errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos)
-import           Text.Megaparsec.Prim        (MonadParsec, getPosition, setPosition)
+import           Text.Megaparsec.Prim        (MonadParsec, setPosition)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
-
-import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Operator handling
@@ -132,11 +129,11 @@ mixfixExprWhere whre = whre & whre_insd %%~ mixfixExpression
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
 mixfixExpression expr = case expr of
-        Var _ _ -> return expr
-        Lit _ _ -> return expr
-        Apply xs an -> do
+        Var {} -> return expr
+        Lit {} -> return expr
+        Apply xs spn -> do
                 xs'  <- toList <$> mapM mixfixExpression xs
-                eith <- runOpParser (generateOpParser (exprListVars xs)) an xs'
+                eith <- runOpParser (generateOpParser (exprListVars xs)) spn xs'
                 flattenExpression <$> case eith of
                         Left perr -> do
                                 let msgs = errorMessages perr
@@ -151,15 +148,15 @@ mixfixExpression expr = case expr of
                 exprListVars = foldl' go []
                     where
                         go :: [String] -> ExpressionSpan -> [String]
-                        go parts expr = case expr of
+                        go parts expr' = case expr' of
                                 Var name _ -> name : parts
                                 _          -> parts
 
                 flattenExpression :: ExpressionSpan -> ExpressionSpan
                 flattenExpression expr' = case expr' of
-                        Apply xs an -> case toList xs of
+                        Apply xs' an -> case toList xs' of
                                 [x] -> flattenExpression x
-                                _   -> Apply (fmap flattenExpression xs) an
+                                _   -> Apply (fmap flattenExpression xs') an
                         _ -> expr'
 
                 messageError :: Message -> Error
@@ -168,28 +165,16 @@ mixfixExpression expr = case expr of
                         Unexpected str -> CErrUnexpected str
                         Message    str -> CErr str
 
-        Lambda arg x an -> do
-                arg' <- mixfixArgument arg
-                x'   <- mixfixExpression x
-                return (Lambda arg' x' an)
-        Let body x an -> do
-                body' <- mixfixBody body
-                x'    <- mixfixExpression x
-                return (Let body' x' an)
-        Forall typs x an -> do
-                typs' <- mapM mixfixTypeBind typs
-                x'    <- mixfixExpression x
-                return (Forall typs' x' an)
-        Exists typ x an -> do
-                typ' <- mixfixTypeBind typ
-                x'   <- mixfixExpression x
-                return (Exists typ' x' an)
-        Select typ an -> do
-                typ' <- mixfixTypeBind typ
-                return (Select typ' an)
-        ImplicitExpr imps an -> do
-                imps' <- mapM mixfixImplicit imps
-                return (ImplicitExpr imps' an)
+        Lambda {}       -> expr & lam_arg %%~ mixfixArgument
+                              >>= lam_expr %%~ mixfixExpression
+        Let {}          -> expr & let_body %%~ mixfixBody
+                              >>= let_expr %%~ mixfixExpression
+        Forall {}       -> expr & fall_typs %%~ mapM mixfixTypeBind
+                              >>= fall_expr %%~ mixfixExpression
+        Exists {}       -> expr & exst_type %%~ mixfixTypeBind
+                              >>= exst_expr %%~ mixfixExpression
+        Select {}       -> expr & slct_type %%~ mixfixTypeBind
+        ImplicitExpr {} -> expr & impl_exprs %%~ mapM mixfixImplicit
 
 mixfixTypeBind :: TypeBindSpan -> LoadPrecTable TypeBindSpan
 mixfixTypeBind = typ_type %%~ mixfixExprWhere
@@ -268,7 +253,7 @@ var str = satisfy [Expected str] sameVar
 -- Parser generator
 
 generateOpParser :: [String] -> OpParser ExprSpan
-generateOpParser inputVars = precTable >>= \tab -> getPosition >>= \pos -> traceShow (pos, tab) $ topP <* eof
+generateOpParser inputVars = topP <* eof
     where
         closedPartP :: ConSnoc f ExprSpan => OperatorRepr -> OpParser (SrcSpan, f ExprSpan)
         closedPartP = foldr' go (pure (SrcSpanNoInfo, empty)) . closedPart
@@ -348,7 +333,7 @@ generateOpParser inputVars = precTable >>= \tab -> getPosition >>= \pos -> trace
                 xs <- fromList <$> (some basicToken)
                 return (Apply xs (exprListSpan xs))
             where
-                -- This tries to get a basic token, if we couldn't get even one,
+                -- this tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
                 -- so `if if a then b else c` is parsed `if_then_else_ (if a) b c`
                 -- instead of giving a parse error
