@@ -60,7 +60,7 @@ type PrecedenceLevel = Map (Fixity ()) [ OperatorParts ]
 type PrecedenceTable = [ PrecedenceLevel ]
 
 opStr :: OperatorParts -> String
-opStr = concatMap (maybe "_" id)
+opStr = concatMap (fromMaybe "_")
 
 strOp :: String -> OperatorParts
 strOp = foldr' go []
@@ -339,7 +339,7 @@ var str = satisfy' testExpr
                         _          -> False
 
 searchOps :: Fixity () -> PrecedenceLevel -> [ OperatorParts ]
-searchOps fix = maybe [] id . Map.lookup fix
+searchOps fix = fromMaybe [] . Map.lookup fix
 
 generateOpP :: OpP ExprSpan
 generateOpP = topOpP <* eof

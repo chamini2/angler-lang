@@ -24,6 +24,7 @@ import           Control.Lens               hiding (op)
 import           Data.Foldable              (msum)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
+import           Data.Maybe                 (fromMaybe)
 
 import           Prelude                    hiding (elem, lookup)
 import qualified Prelude                    as P (elem)
@@ -49,7 +50,7 @@ lookup :: String -> ScopedTable sym -> Maybe sym
 lookup str = views tab_stack (msum . fmap (Map.lookup str))
 
 (!) :: ScopedTable sym -> String -> sym
-(!) tab = maybe message id . flip lookup tab
+(!) tab = fromMaybe message . flip lookup tab
     where
         message = error "SymbolTable.!: given key is not an element in the symbol table"
 

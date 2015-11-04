@@ -26,6 +26,7 @@ import           Control.Monad.State         (MonadState)
 import           Control.Monad.Except        (throwError)
 
 import           Data.Foldable               (foldl')
+import           Data.Maybe                  (fromMaybe)
 
 import           Prelude                     hiding (lookup)
 
@@ -38,7 +39,7 @@ pushM :: MonadState s m => Lens' s [a] -> a -> m ()
 pushM lns x = lns %= cons x
 
 peekM :: MonadState s m => Lens' s [a] -> m a
-peekM lns = maybe (error "Monad.peekM: Nothing") id <$> preuse (lns._head)
+peekM lns = fromMaybe (error "Monad.peekM: Nothing") <$> preuse (lns._head)
 
 popM  :: MonadState s m => Lens' s [a] -> m ()
 popM lns = lns %= tail

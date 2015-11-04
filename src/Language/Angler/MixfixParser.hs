@@ -32,7 +32,7 @@ import           Data.Foldable               (foldl', foldr', toList)
 import           Data.List                   (sortBy)
 import           Data.Sequence               (Seq, fromList)
 
-import           Data.Maybe                  (isJust, isNothing)
+import           Data.Maybe                  (fromJust, fromMaybe, isJust, isNothing)
 
 import qualified Data.Map.Strict             as Map
 
@@ -67,7 +67,7 @@ data Operator
 makeLenses ''Operator
 
 opStr :: OperatorRepr -> String
-opStr = concatMap (maybe "_" id)
+opStr = concatMap (fromMaybe "_")
 
 strOp :: String -> OperatorRepr
 strOp = foldr' go []
@@ -203,7 +203,7 @@ spanPos :: SrcSpan -> SourcePos
 spanPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
 
 levelFixity :: Fixity' -> PrecLevel -> [OperatorRepr]
-levelFixity fix = maybe [] id . Map.lookup fix
+levelFixity fix = fromMaybe [] . Map.lookup fix
 
 mapTryChoice :: (Foldable f, Functor f, MonadParsec s m t) => f a -> (a -> m b)-> m b
 mapTryChoice ops act = choice (fmap (try . act) ops)
