@@ -14,8 +14,6 @@ import           Language.Angler.ScopedTable hiding (elem, empty, toList)
 import qualified Language.Angler.ScopedTable as ST
 import           Language.Angler.SrcLoc
 
-import           PrettyShow
-
 import           Control.Applicative         (Alternative(..))
 
 import           Control.Lens                hiding (op, below, parts)
@@ -36,13 +34,10 @@ import           Data.Maybe                  (fromJust, fromMaybe, isJust, isNot
 
 import qualified Data.Map.Strict             as Map
 
-import           Text.Megaparsec             (ParsecT, runParserT, (<|>),
-                                              choice, eof, many, token, try, some)
-import           Text.Megaparsec.Error       (ParseError, Message(..),
-                                              errorMessages, errorPos)
+import           Text.Megaparsec             (ParsecT, runParserT, choice, eof, token, try)
+import           Text.Megaparsec.Error       (ParseError, Message(..), errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos)
-import           Text.Megaparsec.Prim        (MonadParsec, getInput, getPosition,
-                                              setInput, setPosition)
+import           Text.Megaparsec.Prim        (MonadParsec, getPosition, setPosition)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 import           Debug.Trace
@@ -136,15 +131,17 @@ mixfixExprWhere whre = whre & whre_insd %%~ mixfixExpression
                           >>= whre_body._Just %%~ mixfixBody
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
-mixfixExpression expr = do
-        let input = [expr]
-            spn   = view exp_annot expr
-        eith <- runOpParser (generateOpParser (exprListVars input)) spn input
+mixfixExpression = mixfixExpressionList . pure
+
+mixfixExpressionList :: [ExpressionSpan] -> LoadPrecTable ExpressionSpan
+mixfixExpressionList exprs = do
+        let spn = exprListSpan exprs
+        eith <- runOpParser (generateOpParser (exprListVars exprs)) spn exprs
         flattenExpression <$> case eith of
                 Left perr -> do
                         let msgs = errorMessages perr
-                            spn  = posSpan (errorPos perr)
-                        throwError (fmap (Loc spn . messageError) msgs)
+                            eSpn = posSpan (errorPos perr)
+                        throwError (fmap (Loc eSpn . messageError) msgs)
                 Right x -> return x
     where
         posSpan :: SourcePos -> SrcSpan
@@ -233,17 +230,7 @@ satisfy' guard = token nextPos guard >>= handleExprSpan
         handleExprSpan expr = case expr of
                 Var _ _ -> return expr
                 Lit _ _ -> return expr
-                Apply xs an -> do
-                        inp <- getInput
-                        pos <- getPosition
-
-                        setInput (toList xs)
-                        setPosition (spanPos an)        -- this probably does nothing
-                        x' <- generateOpParser (exprListVars xs)
-
-                        setInput inp
-                        setPosition pos
-                        return x'
+                Apply xs _ -> (lift . mixfixExpressionList . toList) xs
                 Lambda arg x an -> lift $ do
                         arg' <- mixfixArgument arg
                         x'   <- mixfixExpression x
@@ -287,7 +274,7 @@ var str = satisfy [Expected str] sameVar
 -- Parser generator
 
 generateOpParser :: [String] -> OpParser ExprSpan
-generateOpParser inputVars = topP <* eof
+generateOpParser inputVars = precTable >>= \tab -> getPosition >>= \pos -> traceShow (pos, tab) $ topP <* eof
     where
         closedPartP :: ConSnoc f ExprSpan => OperatorRepr -> OpParser (SrcSpan, f ExprSpan)
         closedPartP = foldr' go (pure (SrcSpanNoInfo, empty)) . closedPart
@@ -371,8 +358,8 @@ generateOpParser inputVars = topP <* eof
                 -- it gets any token, and then continues with the basic tokens,
                 -- so `if if a then b else c` is parsed `if_then_else_ (if a) b c`
                 -- instead of giving a parse error
-                cleverTokens :: OpParser [ExprSpan]
-                cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
+                _cleverTokens :: OpParser [ExprSpan]
+                _cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
                     where
                         anyToken :: OpParser ExprSpan
                         anyToken = satisfy [] (const True)
