@@ -209,8 +209,8 @@ mapTryChoice :: (Foldable f, Functor f, MonadParsec s m t) => f a -> (a -> m b)-
 mapTryChoice ops act = choice (fmap (try . act) ops)
 
 type ConSnoc f a = (Alternative f, Cons (f a) (f a) a a, Snoc (f a) (f a) a a)
-expListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
-expListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
+exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
+exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
 
 precTable :: OpParser PrecTable
 precTable = gets (buildTable . sort . fmap snd . ST.toList)
@@ -267,7 +267,7 @@ satisfy' guard = token nextPos guard >>= handleExprSpan
                         pos <- getPosition
 
                         setInput (toList xs)
-                        setPosition (spanPos an)        -- probably this does nothing
+                        setPosition (spanPos an)        -- this probably does nothing
                         x' <- generateOpParser
 
                         setInput inp
@@ -346,14 +346,14 @@ generateOpParser = topP <* eof
         topP = precTable >>= choice . foldr' go [bottomP]
             where
                 -- keep every parser level, passing them as the *hole*
-                -- parser to use in evey upper level
+                -- parser to use in the next level
                 go :: PrecLevel -> [OpParser ExprSpan] -> [OpParser ExprSpan]
                 go lvl acts = try (levelP lvl acts) : acts
 
         bottomP :: OpParser ExprSpan
         bottomP = do
                 xs <- fromList <$> (some basicToken)
-                return (Apply xs (expListSpan xs))
+                return (Apply xs (exprListSpan xs))
             where
                 -- This tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
@@ -416,7 +416,7 @@ generateOpParser = topP <* eof
                     where
                         go :: (ExprSpan, Seq ExprSpan) -> ExprSpan -> ExprSpan
                         go (op, xs) x = let xs' = xs |> x
-                                        in Apply (op <| xs') (expListSpan xs')
+                                        in Apply (op <| xs') (exprListSpan xs')
 
                         prefixP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
                         prefixP = mapTryChoice prefixOps $ \op -> do
@@ -446,7 +446,7 @@ generateOpParser = topP <* eof
                     where
                         go :: ExprSpan -> (ExprSpan, Seq ExprSpan) -> ExprSpan
                         go x (op, xs) = let xs' = x <| xs
-                                        in Apply (op <| xs') (expListSpan xs')
+                                        in Apply (op <| xs') (exprListSpan xs')
 
                         postfixP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
                         postfixP = mapTryChoice postfixOps $ \op -> do
