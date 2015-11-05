@@ -39,7 +39,7 @@ main = do
 
         -- parsing options, getting a list of option actions
         let (optActions, nonOptions, optErrors) = getOpt Permute optionDescrs args
-        strErrorsUnlessNull optErrors
+        putErrorsUnlessNull optErrors
 
         options <- foldActions optActions def
         print options
@@ -52,7 +52,7 @@ main = do
                 ([] , False) -> pshowError (IOError NoModules)
                 (_  , _    ) -> pshowError (IOError TooManyModules)
 
-        (table, ast) <- readModule options filepath handle
+        _ <- readModule options filepath handle
         return ()
 
 readModule :: Options -> FilePath -> Handle -> IO (ScopedTable (), ModuleSpan)
@@ -70,41 +70,39 @@ readModule options filepath handle = do
 
         when (view opt_tokens options || view opt_verbose options) $ do
                 printStage "lexer" Nothing
-                (_,secs) <- stopwatch $ case lexProgram input loc of
+                (_,lexSecs) <- stopwatch $ case lexProgram input loc of
                         Right (ts,_) -> evaluate ts >>= putStrLn . showTokens
                             where
                                 showTokens :: [Located Token] -> String
                                 showTokens = prettyShowTokens . fmap (view loc_insd)
                         Left  _err   -> return ()
-                printStage "lexer" (Just secs)
+                printStage "lexer" (Just lexSecs)
 
-        (ast,secs) <- stopwatch $ case parseProgram input loc of
+        (parseAST,parseSecs) <- stopwatch $ case parseProgram input loc of
                 Right (ast,ws) -> mapM_ print ws >> evaluate ast
                 Left  err      -> pshowError err
-
-        -- imprtsTables <- readImports opts ast
-
         when (view opt_ast options || view opt_verbose options) $ do
                 printStage "parser" Nothing
-                putStrLn (prettyShow ast)
-                printStage "parser" (Just secs)
+                putStrLn (prettyShow parseAST)
+                printStage "parser" (Just parseSecs)
 
-        (ast,secs) <- stopwatch $ case parseMixfix ast of
-                Right ast -> evaluate ast
-                Left  err -> pshowErrors err >> return ast
+        -- imprtsASTs <- readImports imprtsOpts ast
 
+        (mixfixAST,mixfixSecs) <- stopwatch $ case parseMixfix parseAST of
+                Right ast  -> evaluate ast
+                Left  errs -> pshowErrors errs
         when (view opt_mixfix options || view opt_verbose options) $ do
                 printStage "mixfix parser" Nothing
-                putStrLn (prettyShow ast)
-                printStage "mixfix parser" (Just secs)
+                putStrLn (prettyShow mixfixAST)
+                printStage "mixfix parser" (Just mixfixSecs)
 
-        return (ST.empty, ast)
+        return (ST.empty, mixfixAST)
     where
         printStage :: String -> Maybe Double -> IO ()
         printStage stage msecs = do
                 let secs = case msecs of
-                        Just secs -> "(" ++ show secs ++ " s)"
-                        Nothing   -> ""
+                        Just s  -> "(" ++ show s ++ " s)"
+                        Nothing -> ""
                 putStrLn ("\n********** " ++ stage ++ secs ++ "\n")
 
         stopwatch :: IO a -> IO (a, Double)
@@ -113,7 +111,7 @@ readModule options filepath handle = do
                 res   <- act
                 end   <- getTime ProcessCPUTime
                 let nanoSecs = timeSpecAsNanoSecs (diffTimeSpec start end)
-                    secs = fromInteger nanoSecs / (10^9)
+                    secs     = fromInteger nanoSecs / 10 ^ 9
                 return (res, secs)
     {-where
         readImports :: Options -> ModuleSpan -> IO [(SymbolTableSpan, ModuleSpan)]
@@ -157,23 +155,23 @@ readModule options filepath handle = do
                                 _   -> c             : path-}
 
 -- maybe receive the ExitCode number instead of just hard-coding one in
-strError :: String -> IO a
-strError str = putStrLn str >> exitWith (ExitFailure 1)
+putError :: String -> IO a
+putError str = putStrLn str >> exitWith (ExitFailure 1)
 
-strErrors :: Foldable f => f String -> IO a
-strErrors = strError . concat
+putErrors :: Foldable f => f String -> IO a
+putErrors = putError . concat
 
-strErrorsUnlessNull :: Foldable f => f String -> IO ()
-strErrorsUnlessNull es = unless (null es) (strErrors es)
+putErrorsUnlessNull :: Foldable f => f String -> IO ()
+putErrorsUnlessNull es = unless (null es) (putErrors es)
 
 pshowError :: PrettyShow s => s -> IO a
-pshowError = strError . prettyShow
+pshowError = putError . prettyShow
 
 pshowErrors :: (Functor f, Foldable f, PrettyShow s) => f s -> IO a
-pshowErrors = strErrors . fmap ((++"\n") . prettyShow)
+pshowErrors = putErrors . fmap ((++"\n") . prettyShow)
 
 pshowErrorsUnlessNull :: (Functor f, Foldable f, PrettyShow s) => f s -> IO ()
-pshowErrorsUnlessNull = strErrorsUnlessNull . fmap ((++"\n") . prettyShow)
+pshowErrorsUnlessNull = putErrorsUnlessNull . fmap ((++"\n") . prettyShow)
 
 openModule :: FilePath -> IO Handle -> IO Handle
 openModule path act = print path >> doesFileExist path >>= \ans ->
