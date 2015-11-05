@@ -101,7 +101,7 @@ readModule options filepath handle = do
         printStage :: String -> Maybe Double -> IO ()
         printStage stage msecs = do
                 let secs = case msecs of
-                        Just s  -> "(" ++ show s ++ " s)"
+                        Just s  -> " (" ++ show s ++ " s)"
                         Nothing -> ""
                 putStrLn ("\n********** " ++ stage ++ secs ++ "\n")
 
