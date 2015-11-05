@@ -98,20 +98,24 @@ parseMixfix = over _Right fst . runMixfixParser . mixfixModule
 ----------------------------------------
 
 mixfixModule :: ModuleSpan -> LoadPrecTable ModuleSpan
-mixfixModule = mod_body %%~ mixfixBody
+mixfixModule = mod_body mixfixBody
 
 mixfixBody :: BodySpan -> LoadPrecTable BodySpan
 mixfixBody = mapM mixfixBodyStmt
     where
         mixfixBodyStmt :: BodyStmtSpan -> LoadPrecTable BodyStmtSpan
         mixfixBodyStmt stmt = case stmt of
-                OpenType {}     -> stmt & open_type %%~ mixfixExprWhere
-                                      >>= open_cnts._Just %%~ mapM mixfixTypeBind
-                ReopenType {}   -> stmt & rpen_cnts %%~ mapM mixfixTypeBind
-                ClosedType {}   -> stmt & clsd_type %%~ mixfixExprWhere
-                                      >>= clsd_cnts %%~ mapM mixfixTypeBind
-                FunctionDecl {} -> stmt & fdec_type %%~ mixfixExprWhere
-                FunctionDef {}  -> stmt & fdef_args %%~ mixfixArgument
+                OpenType {}     -> stmt & open_type         mixfixExprWhere
+                                      >>= (open_cnts._Just) (mapM mixfixTypeBind)
+
+                ReopenType {}   -> stmt & rpen_cnts (mapM mixfixTypeBind)
+
+                ClosedType {}   -> stmt & clsd_type mixfixExprWhere
+                                      >>= clsd_cnts (mapM mixfixTypeBind)
+
+                FunctionDecl {} -> stmt & fdec_type mixfixExprWhere
+
+                FunctionDef {}  -> stmt & fdef_args mixfixArgument
                                       >>= fdef_expr mixfixExprWhere
 
                 OperatorDef idn fix spn -> do
@@ -124,8 +128,8 @@ mixfixBody = mapM mixfixBodyStmt
                         return stmt
 
 mixfixExprWhere :: ExprWhereSpan -> LoadPrecTable ExprWhereSpan
-mixfixExprWhere whre = whre & whre_insd %%~ mixfixExpression
-                          >>= whre_body._Just %%~ mixfixBody
+mixfixExprWhere whre = whre & whre_insd         mixfixExpression
+                          >>= (whre_body._Just) mixfixBody
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
 mixfixExpression expr = case expr of
@@ -165,19 +169,24 @@ mixfixExpression expr = case expr of
                         Unexpected str -> CErrUnexpected str
                         Message    str -> CErr str
 
-        Lambda {}       -> expr & lam_arg %%~ mixfixArgument
-                              >>= lam_expr %%~ mixfixExpression
-        Let {}          -> expr & let_body %%~ mixfixBody
-                              >>= let_expr %%~ mixfixExpression
-        Forall {}       -> expr & fall_typs %%~ mapM mixfixTypeBind
-                              >>= fall_expr %%~ mixfixExpression
-        Exists {}       -> expr & exst_type %%~ mixfixTypeBind
-                              >>= exst_expr %%~ mixfixExpression
-        Select {}       -> expr & slct_type %%~ mixfixTypeBind
-        ImplicitExpr {} -> expr & impl_exprs %%~ mapM mixfixImplicit
+        Lambda {}       -> expr & lam_arg  mixfixArgument
+                              >>= lam_expr mixfixExpression
+
+        Let {}          -> expr & let_body mixfixBody
+                              >>= let_expr mixfixExpression
+
+        Forall {}       -> expr & fall_typs (mapM mixfixTypeBind)
+                              >>= fall_expr mixfixExpression
+
+        Exists {}       -> expr & exst_type mixfixTypeBind
+                              >>= exst_expr mixfixExpression
+
+        Select {}       -> expr & slct_type mixfixTypeBind
+
+        ImplicitExpr {} -> expr & impl_exprs (mapM mixfixImplicit)
 
 mixfixTypeBind :: TypeBindSpan -> LoadPrecTable TypeBindSpan
-mixfixTypeBind = typ_type %%~ mixfixExprWhere
+mixfixTypeBind = typ_type mixfixExprWhere
 
 mixfixArgument :: ArgumentSpan -> LoadPrecTable ArgumentSpan
 mixfixArgument = (exprArg <$>) . mixfixExpression . argExpr
@@ -197,7 +206,7 @@ mixfixArgument = (exprArg <$>) . mixfixExpression . argExpr
                 _           -> error "MixfixParser.mixfixArgument: impossible case"
 
 mixfixImplicit :: ImplicitBindingSpan -> LoadPrecTable ImplicitBindingSpan
-mixfixImplicit = impl_expr %%~ mixfixExpression
+mixfixImplicit = impl_expr mixfixExpression
 
 --------------------------------------------------------------------------------
 -- Expressions parser
@@ -288,6 +297,7 @@ generateOpParser inputVars = topP <* eof
                         hasPart :: Operator -> Bool
                         hasPart = all (flip elem inputVars) . opPrts
                             where
+                                opPrts :: Operator -> [String]
                                 opPrts = fmap fromJust . filter isJust . view op_prts
 
                 sort :: [Operator] -> [Operator]
