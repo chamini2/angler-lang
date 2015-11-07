@@ -33,10 +33,10 @@ import           Data.Maybe                  (fromJust, fromMaybe, isJust, isNot
 
 import qualified Data.Map.Strict             as Map
 
-import           Text.Megaparsec             (ParsecT, runParserT, choice, eof, token, try)
+import           Text.Megaparsec             (ParsecT, runParserT', choice, eof, token, try)
 import           Text.Megaparsec.Error       (ParseError, Message(..), errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos)
-import           Text.Megaparsec.Prim        (MonadParsec, setPosition)
+import           Text.Megaparsec.Prim        (State(..), MonadParsec, setPosition)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 --------------------------------------------------------------------------------
@@ -89,11 +89,11 @@ instance STScopedTable LoadPrecTableState Operator where
 instance Default LoadPrecTableState where
         def = ST.empty
 
-runMixfix :: LoadPrecTable a -> Either [Located Error] (a, LoadPrecTableState)
-runMixfix = runExcept . flip runStateT def
-
 parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
 parseMixfix = over _Right fst . runMixfix . mixfixModule
+
+runMixfix :: LoadPrecTable a -> Either [Located Error] (a, LoadPrecTableState)
+runMixfix = runExcept . flip runStateT def
 
 ----------------------------------------
 
@@ -219,10 +219,10 @@ type ExprSpan = ExpressionSpan
 type OpParser = ParsecT [ExprSpan] LoadPrecTable
 
 runOpParser :: OpParser a -> SrcSpan -> [ExprSpan] -> LoadPrecTable (Either ParseError a)
-runOpParser act spn = runParserT (setPosition (spanPos spn) >> act) filepath
+runOpParser act spn input = snd <$> runParserT' act initialState
     where
-        filepath :: FilePath
-        filepath = view spn_file spn
+        initialState :: State [ExprSpan]
+        initialState = State input (spanPos spn) 8
 
 ----------------------------------------
 -- DSL connections

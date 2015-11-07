@@ -56,7 +56,7 @@ executable angler
                                 -- System.FilePath
                         , lens
                                 -- Control.Lens
-                        , megaparsec
+                        , megaparsec >=4.2 && <5
                                 -- Text.Megaparsec
                         , mtl
                                 -- MonadTrans
