@@ -14,7 +14,7 @@ module Language.Angler.Monad
     , STScopedTable(..)
     , lookupSc, safeLookupSc
     , insertSc, safeInsertSc
-    , enterSc, exitSc, actInNewSc
+    , enterSc, exitSc, bracketSc
     ) where
 
 import           Language.Angler.Error
@@ -79,5 +79,5 @@ enterSc = st_table %= enterScope
 exitSc :: (STScopedTable s sym, MonadState s m) => m ()
 exitSc = st_table %= exitScope
 
-actInNewSc :: (STScopedTable s sym, MonadState s m) => m a -> m a
-actInNewSc act = enterSc >> act >>= \r -> exitSc >> return r
+bracketSc :: (STScopedTable s sym, MonadState s m) => m a -> m a
+bracketSc act = enterSc >> act >>= \r -> exitSc >> return r

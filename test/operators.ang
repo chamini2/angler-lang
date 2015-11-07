@@ -41,7 +41,20 @@ x = if a ^ d ^ e /= f g then b else c
 
 x = d * < (a == b) c >
 
-x = a + b - c
-x = a + b - c
+
+-- scope testing
+
+x = a + b - c * d                       -- _-_ (_+_ a b) (_*_ c d)
+
+x = let operator _*_ infixR 3
+    in a + b - c * d                    -- _*_ (_+_ a (_-_ b c)) d
     where
         operator _+_ infixR 4
+        operator _-_ infixR 4
+
+x = let operator _*_ infixR 3
+        operator _+_ infixR 5
+    in a + b - c * d                    -- _*_ (_-_ (_+_ a b) c) d
+    where
+        operator _+_ infixR 4
+        operator _-_ infixR 4

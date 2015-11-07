@@ -61,7 +61,7 @@ elemInTop :: String -> ScopedTable sym -> Bool
 elemInTop str = views tab_stack (P.elem str . Map.keys . head)
 
 safeInsert :: String -> sym -> ScopedTable sym -> Either Error (ScopedTable sym)
-safeInsert str sym tab = if elem str tab
+safeInsert str sym tab = if elemInTop str tab
         then (Left . CheckError . CErrAlreadyInSymbolTable) str
         else Right (over (tab_stack._head) (Map.insert str sym) tab)
 

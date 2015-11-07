@@ -132,8 +132,8 @@ mixfixBody bdy = mapM_ loadPrecOp bdy >> mapM mixfixBodyStmt bdy
                 OperatorDef {} -> return stmt
 
 mixfixExprWhere :: ExprWhereSpan -> LoadPrecTable ExprWhereSpan
-mixfixExprWhere whre = whre & whre_insd         mixfixExpression
-                          >>= (whre_body._Just) mixfixBody
+mixfixExprWhere whre = bracketSc $ whre & (whre_body._Just) mixfixBody
+                                      >>= whre_insd         mixfixExpression
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
 mixfixExpression expr = case expr of
@@ -176,8 +176,8 @@ mixfixExpression expr = case expr of
         Lambda {}       -> expr & lam_arg  mixfixArgument
                               >>= lam_expr mixfixExpression
 
-        Let {}          -> expr & let_body mixfixBody
-                              >>= let_expr mixfixExpression
+        Let {}          -> bracketSc $ expr & let_body mixfixBody
+                                          >>= let_expr mixfixExpression
 
         Forall {}       -> expr & fall_typs (mapM mixfixTypeBind)
                               >>= fall_expr mixfixExpression
