@@ -89,11 +89,11 @@ instance STScopedTable LoadPrecTableState Operator where
 instance Default LoadPrecTableState where
         def = ST.empty
 
-runMixfixParser :: LoadPrecTable a -> Either [Located Error] (a, LoadPrecTableState)
-runMixfixParser = runExcept . flip runStateT def
+runMixfix :: LoadPrecTable a -> Either [Located Error] (a, LoadPrecTableState)
+runMixfix = runExcept . flip runStateT def
 
 parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
-parseMixfix = over _Right fst . runMixfixParser . mixfixModule
+parseMixfix = over _Right fst . runMixfix . mixfixModule
 
 ----------------------------------------
 
@@ -101,8 +101,19 @@ mixfixModule :: ModuleSpan -> LoadPrecTable ModuleSpan
 mixfixModule = mod_body mixfixBody
 
 mixfixBody :: BodySpan -> LoadPrecTable BodySpan
-mixfixBody = mapM mixfixBodyStmt
+mixfixBody bdy = mapM_ loadPrecOp bdy >> mapM mixfixBodyStmt bdy
     where
+        loadPrecOp :: BodyStmtSpan -> LoadPrecTable ()
+        loadPrecOp stmt = case stmt of
+                OperatorDef idn fix spn -> do
+                        let idn' = view idn_str idn
+                            fix' = set fix_annot () fix
+                        merr <- safeInsertSc idn' (Operator idn' fix')
+                        when (isJust merr) $ do
+                                let Just err = merr
+                                throwError [Loc spn err]
+                _ -> return ()
+
         mixfixBodyStmt :: BodyStmtSpan -> LoadPrecTable BodyStmtSpan
         mixfixBodyStmt stmt = case stmt of
                 OpenType {}     -> stmt & open_type         mixfixExprWhere
@@ -118,14 +129,7 @@ mixfixBody = mapM mixfixBodyStmt
                 FunctionDef {}  -> stmt & fdef_args mixfixArgument
                                       >>= fdef_expr mixfixExprWhere
 
-                OperatorDef idn fix spn -> do
-                        let idn' = view idn_str idn
-                            fix' = set fix_annot () fix
-                        merr <- safeInsertSc idn' (Operator idn' fix')
-                        when (isJust merr) $ do
-                                let Just err = merr
-                                throwError [Loc spn err]
-                        return stmt
+                OperatorDef {} -> return stmt
 
 mixfixExprWhere :: ExprWhereSpan -> LoadPrecTable ExprWhereSpan
 mixfixExprWhere whre = whre & whre_insd         mixfixExpression
@@ -224,7 +228,7 @@ runOpParser act spn = runParserT (setPosition (spanPos spn) >> act) filepath
 -- DSL connections
 
 spanPos :: SrcSpan -> SourcePos
-spanPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
+spanPos spn = newPos (view spn_file spn) (view spn_eline spn) (view spn_ecol spn)
 
 levelFixity :: Fixity' -> PrecLevel -> [OperatorRepr]
 levelFixity fix = fromMaybe [] . Map.lookup fix
@@ -237,7 +241,7 @@ exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
 exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
 
 satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpParser ExprSpan
-satisfy' guard = token nextPos guard
+satisfy' = token nextPos
     where
         nextPos :: Int -> SourcePos -> ExprSpan -> SourcePos
         nextPos _tab _p = spanPos . view exp_annot
