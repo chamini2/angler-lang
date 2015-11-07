@@ -40,3 +40,8 @@ x = if (\a -> (a d e == f) g /= h) then b else c
 x = if a ^ d ^ e /= f g then b else c
 
 x = d * < (a == b) c >
+
+x = a + b - c
+x = a + b - c
+    where
+        operator _+_ infixR 4

@@ -9,7 +9,6 @@ import           Language.Angler.MixfixParser  (parseMixfix)
 import           Language.Angler.Options
 import           Language.Angler.SrcLoc
 import           Language.Angler.ScopedTable   hiding (empty)
-import qualified Language.Angler.ScopedTable   as ST (empty)
 
 import           PrettyShow
 
@@ -96,7 +95,7 @@ readModule options filepath handle = do
                 putStrLn (prettyShow mixfixAST)
                 printStage "mixfix parser" (Just mixfixSecs)
 
-        return (ST.empty, mixfixAST)
+        return (undefined, mixfixAST)
     where
         printStage :: String -> Maybe Double -> IO ()
         printStage stage msecs = do

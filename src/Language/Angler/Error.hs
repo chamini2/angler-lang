@@ -80,7 +80,7 @@ data CheckError
 instance Show CheckError where
         show ce = case ce of
                 CErr                     str -> str
-                CErrAlreadyInSymbolTable idn -> "identifier '" ++ idn ++ "' has already been declared at thi scope"
+                CErrAlreadyInSymbolTable idn -> "identifier '" ++ idn ++ "' has already been declared at this scope"
                 CErrExpected              tk -> "in mixfix parser, expected " ++ tk
                 CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ tk
 
