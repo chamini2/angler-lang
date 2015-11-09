@@ -46,7 +46,9 @@ data Import a
   deriving Show
 type ImportSpan = Import SrcSpan
 
-type Body a = Seq (BodyStmt a)
+newtype Body a
+  = Body { _bod_stmts   :: Seq (BodyStmt a) }
+  deriving Show
 type BodySpan = Body SrcSpan
 
 data BodyStmt a
@@ -247,6 +249,7 @@ type LiteralSpan = Literal SrcSpan
 makeLenses ''Identifier
 makeLenses ''Module
 makeLenses ''Import
+makeLenses ''Body
 makeLenses ''BodyStmt
 makeLenses ''Where
 makeLenses ''Expression
@@ -268,10 +271,13 @@ instance PrettyShow (Module a) where
 
                 pshows line imprts
                 line >> line
-                pshows (line >> line) bdy
+                pshow bdy
             where
                 showExports :: Traversable f => f (Identifier a) -> String
                 showExports = intercalate ", " . toListOf (traverse.idn_str)
+
+instance PrettyShow (Body a) where
+        pshow (Body stmts) = pshows line stmts
 
 instance PrettyShow (Import a) where
         pshow (Import path mas mspec _) = do
@@ -322,7 +328,7 @@ instance PrettyShow (f a) => PrettyShow (Where f a) where
                                 string "where"
 
                                 raise >> line
-                                pshows line bdy
+                                pshow bdy
                                 lower >> lower
 
 instance PrettyShow (Expression a) where
@@ -350,7 +356,7 @@ instance PrettyShow (Expression a) where
                                         string "let"
 
                                         raise >> line
-                                        pshows line bdy
+                                        pshow bdy
                                         lower >> line >> lower
 
                                         string "in "

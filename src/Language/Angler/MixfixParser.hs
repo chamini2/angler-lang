@@ -101,7 +101,8 @@ mixfixModule :: ModuleSpan -> LoadPrecTable ModuleSpan
 mixfixModule = mod_body mixfixBody
 
 mixfixBody :: BodySpan -> LoadPrecTable BodySpan
-mixfixBody bdy = mapM_ loadPrecOp bdy >> mapM mixfixBodyStmt bdy
+mixfixBody bdy = mapM_ loadPrecOp (view bod_stmts bdy)
+              >> bod_stmts (mapM mixfixBodyStmt) bdy
     where
         loadPrecOp :: BodyStmtSpan -> LoadPrecTable ()
         loadPrecOp stmt = case stmt of

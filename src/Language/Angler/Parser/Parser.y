@@ -190,7 +190,7 @@ Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
 -- declarations, definitions
 Body :: { BodySpan }
     : ListSep1(BodyStmt, '^;')
-                    { $1 }
+                    { Body $1 }
 
     CloseBrace :: { () }
         : '^}'          { () }
