@@ -6,6 +6,7 @@ import           Language.Angler.Parser.Parser (lexProgram, parseProgram)
 import           Language.Angler.Parser.Token  (Token, prettyShowTokens)
 import           Language.Angler.Monad
 import           Language.Angler.MixfixParser  (parseMixfix)
+import           Language.Angler.Compact       (compactAST)
 import           Language.Angler.Options
 import           Language.Angler.SrcLoc
 import           Language.Angler.ScopedTable   hiding (empty)

@@ -1,7 +1,15 @@
 module Language.Angler.ASTCompact where
 
+import qualified Language.Angler.AST as AST
+
 import           Data.Sequence (Seq)
 import           Control.Lens
+
+type Identifier = AST.Identifier
+idn_str :: Lens' (Identifier a) String
+idn_str   = AST.idn_str
+idn_annot :: Lens' (Identifier a) a
+idn_annot = AST.idn_annot
 
 data Module a
   = Module
@@ -11,7 +19,9 @@ data Module a
         }
   deriving Show
 
-type Body a = Seq (BodyStmt a)
+newtype Body a
+  = Body { _bod_stmts   :: Seq (BodyStmt a) }
+  deriving Show
 
 data BodyStmt a
   = Function
@@ -20,23 +30,17 @@ data BodyStmt a
         , _fun_expr     :: Expression a
         , _stm_annot    :: a
         }
-  | OpenType
-        { _open_idn     :: Identifier a
-        , _open_type    :: Expression a
-        , _open_cnts    :: Seq (ExpressionBind a)
+  | Type
+        { _type_idn     :: Identifier a
+        , _type_type    :: Expression a
+        , _type_open    :: Bool
+        , _type_cnts    :: Seq (ExpressionBind a)
+        , _stm_annot    :: a
         }
-  | ClosedType
-        { _clsd_idn     :: Identifier a
-        , _clsd_type    :: Expression a
-        , _clsd_cnts    :: Seq (ExpressionBind a)
-        }
-  deriving Show
-
-data Identifier a
-  = Identifier
-        { _idn_str      :: String
-        , _idn_fix      :: Maybe Fixity
-        , _idn_annot    :: a
+  | Operator
+        { _oper_idn     :: Identifier a
+        , _oper_fix     :: Fixity a
+        , _stm_annot    :: a
         }
   deriving Show
 
@@ -46,7 +50,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | Lit
-        { _val_lit      :: Literal
+        { _val_lit      :: Literal a
         , _exp_annot    :: a
         }
   | Apply
@@ -84,7 +88,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | CaseOf
-        { _case_args    :: Maybe (Seq (Expression a))
+        { _case_args    :: Seq (Expression a)
         , _case_cases   :: Seq (Case a)
         , _exp_annot    :: a
         }
@@ -94,6 +98,7 @@ data Case a
   = Case
         { _case_pttrn   :: Seq (Argument a)
         , _case_expr    :: Expression a
+        , _case_annot   :: a
         }
   deriving Show
 
@@ -105,45 +110,34 @@ data ExpressionBind a
         }
   deriving Show
 
+type Associativity = AST.Associativity
+
+type Fixity = AST.Fixity
+fix_assoc :: Traversal' (Fixity a) Associativity
+fix_assoc = AST.fix_assoc
+fix_prec :: Traversal' (Fixity a) Int
+fix_prec = AST.fix_prec
+fix_annot :: Lens' (Fixity a) a
+fix_annot = AST.fix_annot
+
 data Argument a
-  = DontCare
-        { _arg_annot    :: a }
-  | Binding
+  = VarBinding
         { _arg_bind     :: ExpressionBind a
         , _arg_annot    :: a
         }
-  | ParenthesizedBinding
+  | ApplyBinding
         { _arg_paren    :: Expression a
         , _arg_annot    :: a
         }
+  | DontCare
+        { _arg_annot    :: a }
   deriving Show
 
-data Literal
-  = LitInt    Int
-  | LitChar   Char
-  | LitString String
-  deriving Show
-
-data Fixity
-  = Prefix
-  | Infix Associativity
-  | Postfix
-  | Closedfix
-  deriving Show
-
-data Associativity
-  = LeftAssoc
-  | RightAssoc
-  | NonAssoc
-  deriving Show
+type Literal = AST.Literal
 
 makeLenses ''Module
 makeLenses ''BodyStmt
-makeLenses ''Identifier
 makeLenses ''Expression
 makeLenses ''Case
 makeLenses ''ExpressionBind
 makeLenses ''Argument
-makeLenses ''Literal
-makeLenses ''Fixity
-makeLenses ''Associativity
