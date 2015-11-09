@@ -36,7 +36,7 @@ import qualified Data.Map.Strict             as Map
 import           Text.Megaparsec             (ParsecT, runParserT', choice, eof, token, try)
 import           Text.Megaparsec.Error       (ParseError, Message(..), errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos)
-import           Text.Megaparsec.Prim        (State(..), MonadParsec, setPosition)
+import           Text.Megaparsec.Prim        (State(..), MonadParsec)
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
 --------------------------------------------------------------------------------
