@@ -9,6 +9,9 @@ module Language.Angler.Monad
     , STWarnings(..)
     , warn
 
+    , STErrors(..)
+    , addError
+
     , throwError
 
     , STScopedTable(..)
@@ -50,6 +53,14 @@ class STWarnings st where
 
 warn :: (STWarnings s, MonadState s m) => Located Warning -> m ()
 warn w = st_warnings %= (|> w)
+
+----------------------------------------
+
+class STErrors st where
+        st_errors :: Lens' st [Located Error]
+
+addError :: (STErrors s, MonadState s m) => Located Error -> m ()
+addError e = st_errors %= (|> e)
 
 --------------------------------------------------------------------------------
 
