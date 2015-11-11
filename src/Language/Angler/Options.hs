@@ -17,6 +17,7 @@ data Options
         , _opt_tokens   :: Bool
         , _opt_ast      :: Bool
         , _opt_mixfix   :: Bool
+        , _opt_compact  :: Bool
         , _opt_stdin    :: Bool
         -- , _opt_symbols  :: Bool
         -- , _opt_execute  :: Bool
@@ -36,6 +37,7 @@ instance Default Options where
         , _opt_tokens   = False
         , _opt_ast      = False
         , _opt_mixfix   = False
+        , _opt_compact  = False
         , _opt_stdin    = False
         -- , _opt_symbols  = False
         -- , _opt_execute  = True
@@ -93,6 +95,12 @@ optionDescrs =
 
         , Option []    ["no-mixfix-ast"] (NoArg (optBool opt_mixfix False))
                 "avoids showing the parsed AST after passing the mixfix parser (default)"
+
+        , Option []    ["compact-ast"]    (NoArg (optBool opt_compact True))
+                "shows the AST after compacting it"
+
+        , Option []    ["no-compact-ast"] (NoArg (optBool opt_compact False))
+                "avoids showing AST after compacting it (default)"
         ]
     where
         optBool :: Lens' Options Bool -> Bool -> Options -> IO Options
