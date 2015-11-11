@@ -86,7 +86,7 @@ readModule options filepath handle = do
                 putStrLn (prettyShow parseAST)
                 printStage "parser" (Just parseSecs)
 
-        -- imprtsASTs <- readImports imprtsOpts ast
+        -- imprts <- readImports imprtsOpts ast
 
         (mixfixAST,mixfixSecs) <- stopwatch $ case parseMixfix parseAST of
                 Right ast  -> evaluate ast
@@ -96,7 +96,13 @@ readModule options filepath handle = do
                 putStrLn (prettyShow mixfixAST)
                 printStage "mixfix parser" (Just mixfixSecs)
 
-        return (undefined, mixfixAST)
+        -- (compactedAST,compactedSecs) <- stopwatch $ evaluate (compactAST mixfixAST)
+        -- when (view opt_compact options || view opt_verbose options) $ do
+        --         printStage "compact" Nothing
+        --         putStrLn (prettyShow compactedAST)
+        --         printStage "compact" (Just compactedSecs)
+
+        return (undefined, undefined)
     where
         printStage :: String -> Maybe Double -> IO ()
         printStage stage msecs = do
