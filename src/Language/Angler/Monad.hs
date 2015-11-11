@@ -12,8 +12,7 @@ module Language.Angler.Monad
     , throwError
 
     , STScopedTable(..)
-    , lookupSc, safeLookupSc
-    , insertSc, safeInsertSc
+    , lookupSc, insertSc
     , enterSc, exitSc, bracketSc
     ) where
 
@@ -57,19 +56,13 @@ warn w = st_warnings %= (|> w)
 class STScopedTable st sym | st -> sym where
         st_table :: Lens' st (ScopedTable sym)
 
-lookupSc :: (STScopedTable s sym, MonadState s m) => String -> m sym
-lookupSc = uses st_table . flip (!)
+lookupSc :: (STScopedTable s sym, MonadState s m) => String -> m (Maybe sym)
+lookupSc = uses st_table . lookup
 
-safeLookupSc :: (STScopedTable s sym, MonadState s m) => String -> m (Maybe sym)
-safeLookupSc = uses st_table . lookup
-
-insertSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m ()
-insertSc str sym = st_table %= insert str sym
-
-safeInsertSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m (Maybe Error)
-safeInsertSc str sym = do
-        tab <- use st_table
-        case safeInsert str sym tab of
+insertSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m (Maybe Error)
+insertSc str sym = do
+        eitTab <- uses st_table (safeInsert str sym)
+        case eitTab of
                 Left err   -> return (Just err)
                 Right tab' -> assign st_table tab' >> return Nothing
 

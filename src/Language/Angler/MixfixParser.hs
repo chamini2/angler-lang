@@ -109,7 +109,7 @@ mixfixBody bdy = mapM_ loadPrecOp (view bod_stmts bdy)
                 OperatorDef idn fix spn -> do
                         let idn' = view idn_str idn
                             fix' = set fix_annot () fix
-                        merr <- safeInsertSc idn' (Operator idn' fix')
+                        merr <- insertSc idn' (Operator idn' fix')
                         when (isJust merr) $ do
                                 let Just err = merr
                                 throwError [Loc spn err]
