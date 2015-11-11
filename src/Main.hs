@@ -1,6 +1,6 @@
 module Main where
 
-import           Language.Angler.Program
+import           Language.Angler.AST
 import           Language.Angler.Error
 import           Language.Angler.Parser.Parser (lexProgram, parseProgram)
 import           Language.Angler.Parser.Token  (Token, prettyShowTokens)
@@ -9,7 +9,6 @@ import           Language.Angler.MixfixParser  (parseMixfix)
 import           Language.Angler.Compact       (compactAST)
 import           Language.Angler.Options
 import           Language.Angler.SrcLoc
-import           Language.Angler.SymbolTable
 
 import           PrettyShow
 

@@ -1,53 +1,21 @@
-module Language.Angler.ASTCompact where
+module Language.Angler.AST where
 
 import qualified Language.Angler.Program as Program
 import           Language.Angler.SrcLoc
+import           Language.Angler.ScopedTable
 
 import           Control.Lens
 
 import           Data.Sequence (Seq)
 
+--------------------------------------------------------------------------------
+-- abstract syntax tree
+
 type Identifier = Program.Identifier
 idn_str :: Lens' (Identifier a) String
-idn_str   = Program.idn_str
+idn_str = Program.idn_str
 idn_annot :: Lens' (Identifier a) a
 idn_annot = Program.idn_annot
-
-data Module a
-  = Module
-        { _mod_name     :: String
-        , _mod_body     :: Body a
-        , _mod_annot    :: a
-        }
-  deriving Show
-type ModuleSpan = Module SrcSpan
-
-newtype Body a
-  = Body { _bod_stmts   :: Seq (BodyStmt a) }
-  deriving Show
-type BodySpan = Body SrcSpan
-
-data BodyStmt a
-  = Function
-        { _fun_idn      :: Identifier a
-        , _fun_type     :: Expression a
-        , _fun_expr     :: Expression a
-        , _stm_annot    :: a
-        }
-  | Type
-        { _type_idn     :: Identifier a
-        , _type_type    :: Expression a
-        , _type_open    :: Bool
-        , _type_cnts    :: Seq (ExpressionBind a)
-        , _stm_annot    :: a
-        }
-  | Operator
-        { _oper_idn     :: Identifier a
-        , _oper_fix     :: Fixity a
-        , _stm_annot    :: a
-        }
-  deriving Show
-type BodyStmtSpan = BodyStmt SrcSpan
 
 data Expression a
   = Var
@@ -70,7 +38,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | Let
-        { _let_body     :: Body a
+        { _let_tab      :: SymbolTable a
         , _let_expr     :: Expression a
         , _exp_annot    :: a
         }
@@ -146,9 +114,70 @@ type ArgumentSpan = Argument SrcSpan
 type Literal = Program.Literal
 type LiteralSpan = Literal SrcSpan
 
-makeLenses ''Module
-makeLenses ''BodyStmt
+--------------------------------------------------------------------------------
+-- symbol table
+
+type SymbolTable a = ScopedTable (Symbol a)
+type SymbolTableSpan = SymbolTable SrcSpan
+
+data Symbol a
+  = SymbolFunction
+        { _sym_idn      :: Identifier a
+        , _sym_type     :: Expression a
+        , _sym_def      :: Maybe (Expression a)
+        }
+  | SymbolType
+        { _sym_idn      :: Identifier a
+        , _sym_type     :: Expression a
+        , _sym_cons     :: Seq (ExpressionBind a)
+        , _sym_open     :: Bool
+        }
+  | SymbolArgument
+        { _sym_idn      :: Identifier a
+        , _sym_type     :: Expression a
+        -- , _sym_val      :: Expression a
+        }
+  deriving Show
+type SymbolSpan = Symbol SrcSpan
+
 makeLenses ''Expression
 makeLenses ''CaseAlt
 makeLenses ''ExpressionBind
 makeLenses ''Argument
+makeLenses ''Symbol
+
+-- isSymbolFunction :: Symbol a -> Bool
+-- isSymbolFunction sym = case sym of
+--         SymbolFunction {} -> True
+--         _                 -> False
+--
+-- isSymbolType :: Symbol a -> Bool
+-- isSymbolType sym = case sym of
+--         SymbolType {} -> True
+--         _             -> False
+--
+-- isSymbolArgument :: Symbol a -> Bool
+-- isSymbolArgument sym = case sym of
+--         SymbolArgument {} -> True
+--         _                 -> False
+--
+-- insertFunctionDecl :: Identifier a -> Expression a -> SymbolTable a -> Either Error (SymbolTable a)
+-- insertFunctionDecl idn typ = safeInsert (view idn_str idn) (SymbolFunction idn typ Nothing)
+
+-- insertFunctionDef :: Identifier a -> [Argument a] -> Expression a -> SymbolTable a -> Either Error (SymbolTable a)
+-- insertFunctionDef idn args expr tab = do
+--         let str = view idn_str idn
+--
+--         unless (elemInCurrentScope str tab) $ Left (error "insertFunctionDef")
+--         let Just tabSym = lookup str tab
+--
+--         unless (isSymbolFunction tabSym) $ Left (error "insertFunctionDef 2")
+--         let SymbolFunction _ typ mexpr = tabSym
+--         let expr' = maybe expr (addCaseAlt args expr) mexpr
+--
+--     where
+--         addCaseAlt :: [Argument a] -> Expression a -> Expression a -> Expression a
+--         addCaseAlt as x old = case old of
+--                 Lambda larg ltyp lexpr ann -> case lexpr of
+--                         CaseOf arg calts ann -> CaseOf arg (buildAlt as x <| calts) ann
+--                         _ -> CaseOf x

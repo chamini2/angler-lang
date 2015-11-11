@@ -4,12 +4,11 @@
 module Language.Angler.Compact
         ( compactAST ) where
 
-import qualified Language.Angler.Program     as L       -- Loose
-import qualified Language.Angler.ASTCompact  as C       -- Compact
+import qualified Language.Angler.Program     as P
+import           Language.Angler.AST
 import           Language.Angler.Error
 import           Language.Angler.Monad
 import           Language.Angler.SrcLoc
-import           Language.Angler.SymbolTable
 
 import           Control.Applicative         (empty)
 
@@ -50,7 +49,7 @@ instance Default CompactState where
                 , _cm_errors   = []
                 }
 
-compactAST :: L.ModuleSpan -> C.Module (SrcSpan, ())
+compactAST :: P.ModuleSpan -> ()
 compactAST = fst . flip runCompact def . compactModule
 
 runCompact :: Compact a -> CompactState -> (a, CompactState)
@@ -58,38 +57,36 @@ runCompact = runState
 
 ----------------------------------------
 
-compactModule :: L.ModuleSpan -> Compact (C.Module (SrcSpan, ()))
-compactModule (L.Module name _expts _impts bdy ann) = do
-        bdy' <- compactBody bdy
-        return (C.Module name bdy' (ann, error "compactModule"))
+compactModule :: P.ModuleSpan -> Compact ()
+compactModule (P.Module name _expts _impts bdy ann) = compactBody bdy
 
-compactBody :: L.BodySpan -> Compact (C.Body (SrcSpan, ()))
-compactBody (L.Body stmts) = mapM_ loadTableBodyStmt stmts
-                          >> C.Body <$> mapM compactBodyStmt stmts
+compactBody :: P.BodySpan -> Compact ()
+compactBody (P.Body stmts) = mapM_ loadTableBodyStmt stmts
+                          >> mapM_ compactBodyStmt stmts
     where
-        loadTableBodyStmt :: L.BodyStmtSpan -> Compact ()
+        loadTableBodyStmt :: P.BodyStmtSpan -> Compact ()
         loadTableBodyStmt stmt = case stmt of
-                L.OpenType idn typ mcns ann -> do
+                P.OpenType idn typ mcns ann -> do
                         typ' <- compactExprWhere typ
                         cns' <- mapM compactTypeBind (fromMaybe empty mcns)
 
                         let sym = SymbolType idn typ' cns' True
 
-                        merr <- insertSc (view L.idn_str idn) sym
+                        merr <- insertSc (view P.idn_str idn) sym
                         when (isJust merr) $ do
                                 let Just err = merr
                                 addError (Loc ann err)
 
-                L.ReopenType idn cns ann -> do
+                P.ReopenType idn cns ann -> do
                         cns' <- mapM compactTypeBind cns
                         return ()
 
-        compactBodyStmt :: L.BodyStmtSpan -> Compact (C.BodyStmt (SrcSpan, ()))
+        compactBodyStmt :: P.BodyStmtSpan -> Compact ()
         compactBodyStmt stmt = case stmt of
-                L.OpenType idn typ mcns ann -> undefined
+                P.OpenType idn typ mcns ann -> undefined
 
-compactExprWhere :: L.ExprWhereSpan -> Compact (C.Expression SrcSpan)
+compactExprWhere :: P.ExprWhereSpan -> Compact (Expression SrcSpan)
 compactExprWhere = undefined
 
-compactTypeBind :: L.TypeBindSpan -> Compact (C.ExpressionBind SrcSpan)
+compactTypeBind :: P.TypeBindSpan -> Compact (ExpressionBind SrcSpan)
 compactTypeBind = undefined
