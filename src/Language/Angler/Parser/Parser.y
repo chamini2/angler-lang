@@ -8,7 +8,7 @@ module Language.Angler.Parser.Parser
 
 import           Language.Angler.Parser.Lexer (evalLP, lexer, popContext, lexProgram)
 
-import           Language.Angler.AST
+import           Language.Angler.Program
 import           Language.Angler.Error
 import           Language.Angler.Monad
 import           Language.Angler.Parser.LP

@@ -4,7 +4,7 @@
 module Language.Angler.Compact
         ( compactAST ) where
 
-import qualified Language.Angler.AST         as L       -- Loose
+import qualified Language.Angler.Program     as L       -- Loose
 import qualified Language.Angler.ASTCompact  as C       -- Compact
 import           Language.Angler.Error
 import           Language.Angler.Monad

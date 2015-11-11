@@ -1,17 +1,17 @@
 module Language.Angler.ASTCompact where
 
-import qualified Language.Angler.AST as AST
+import qualified Language.Angler.Program as Program
 import           Language.Angler.SrcLoc
 
 import           Control.Lens
 
 import           Data.Sequence (Seq)
 
-type Identifier = AST.Identifier
+type Identifier = Program.Identifier
 idn_str :: Lens' (Identifier a) String
-idn_str   = AST.idn_str
+idn_str   = Program.idn_str
 idn_annot :: Lens' (Identifier a) a
-idn_annot = AST.idn_annot
+idn_annot = Program.idn_annot
 
 data Module a
   = Module
@@ -118,16 +118,16 @@ data ExpressionBind a
   deriving Show
 type ExpressionBindSpan = ExpressionBind SrcSpan
 
-type Associativity = AST.Associativity
+type Associativity = Program.Associativity
 
-type Fixity = AST.Fixity
+type Fixity = Program.Fixity
 type FixitySpan = Fixity SrcSpan
 fix_assoc :: Traversal' (Fixity a) Associativity
-fix_assoc = AST.fix_assoc
+fix_assoc = Program.fix_assoc
 fix_prec :: Traversal' (Fixity a) Int
-fix_prec = AST.fix_prec
+fix_prec = Program.fix_prec
 fix_annot :: Lens' (Fixity a) a
-fix_annot = AST.fix_annot
+fix_annot = Program.fix_annot
 
 data Argument a
   = NameBinding
@@ -143,7 +143,7 @@ data Argument a
   deriving Show
 type ArgumentSpan = Argument SrcSpan
 
-type Literal = AST.Literal
+type Literal = Program.Literal
 type LiteralSpan = Literal SrcSpan
 
 makeLenses ''Module

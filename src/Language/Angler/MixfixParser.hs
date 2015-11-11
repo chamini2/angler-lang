@@ -7,7 +7,7 @@
 module Language.Angler.MixfixParser
         ( parseMixfix ) where
 
-import           Language.Angler.AST
+import           Language.Angler.Program
 import           Language.Angler.Error       hiding (ParseError)
 import           Language.Angler.Monad
 import           Language.Angler.ScopedTable hiding (elem, empty, fromList, toList)

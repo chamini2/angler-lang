@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Language.Angler.AST where
+module Language.Angler.Program where
 
 import           Language.Angler.SrcLoc
 

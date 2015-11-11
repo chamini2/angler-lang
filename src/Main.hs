@@ -1,6 +1,6 @@
 module Main where
 
-import           Language.Angler.AST
+import           Language.Angler.Program
 import           Language.Angler.Error
 import           Language.Angler.Parser.Parser (lexProgram, parseProgram)
 import           Language.Angler.Parser.Token  (Token, prettyShowTokens)
@@ -9,7 +9,7 @@ import           Language.Angler.MixfixParser  (parseMixfix)
 import           Language.Angler.Compact       (compactAST)
 import           Language.Angler.Options
 import           Language.Angler.SrcLoc
-import           Language.Angler.ScopedTable   hiding (empty)
+import           Language.Angler.SymbolTable
 
 import           PrettyShow
 
@@ -55,7 +55,7 @@ main = do
         _ <- readModule options filepath handle
         return ()
 
-readModule :: Options -> FilePath -> Handle -> IO (ScopedTable (), ModuleSpan)
+readModule :: Options -> FilePath -> Handle -> IO SymbolTableSpan
 readModule options filepath handle = do
         -- setting the flags for the import files
         let imprtsOpts = options & (opt_stdin  .~ False)
@@ -78,31 +78,31 @@ readModule options filepath handle = do
                         Left  _err   -> return ()
                 printStage "lexer" (Just lexSecs)
 
-        (parseAST,parseSecs) <- stopwatch $ case parseProgram input loc of
+        (parseProg,parseSecs) <- stopwatch $ case parseProgram input loc of
                 Right (ast,ws) -> mapM_ print ws >> evaluate ast
                 Left  err      -> pshowError err
         when (view opt_ast options || view opt_verbose options) $ do
                 printStage "parser" Nothing
-                putStrLn (prettyShow parseAST)
+                putStrLn (prettyShow parseProg)
                 printStage "parser" (Just parseSecs)
 
         -- imprts <- readImports imprtsOpts ast
 
-        (mixfixAST,mixfixSecs) <- stopwatch $ case parseMixfix parseAST of
+        (mixfixProg,mixfixSecs) <- stopwatch $ case parseMixfix parseProg of
                 Right ast  -> evaluate ast
                 Left  errs -> pshowErrors errs
         when (view opt_mixfix options || view opt_verbose options) $ do
                 printStage "mixfix parser" Nothing
-                putStrLn (prettyShow mixfixAST)
+                putStrLn (prettyShow mixfixProg)
                 printStage "mixfix parser" (Just mixfixSecs)
 
-        -- (compactedAST,compactedSecs) <- stopwatch $ evaluate (compactAST mixfixAST)
+        -- (symbolTable,compactedSecs) <- stopwatch $ evaluate (compactAST mixfixProg)
         -- when (view opt_compact options || view opt_verbose options) $ do
         --         printStage "compact" Nothing
-        --         putStrLn (prettyShow compactedAST)
+        --         putStrLn (prettyShow symbolTable)
         --         printStage "compact" (Just compactedSecs)
 
-        return (undefined, undefined)
+        return undefined
     where
         printStage :: String -> Maybe Double -> IO ()
         printStage stage msecs = do
