@@ -72,6 +72,7 @@ data CheckError
 
   -- symbol table
   | CErrAlreadyInSymbolTable    String
+  | CErrNotInSymbolTable        String
 
   -- mixfix parser
   | CErrExpected                String
@@ -81,6 +82,7 @@ instance Show CheckError where
         show ce = case ce of
                 CErr                     str -> str
                 CErrAlreadyInSymbolTable idn -> "identifier '" ++ idn ++ "' has already been declared at this scope"
+                CErrNotInSymbolTable     idn -> "Identifier '" ++ idn ++ "' is not in the symbol table"
                 CErrExpected              tk -> "in mixfix parser, expected " ++ tk
                 CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ tk
 

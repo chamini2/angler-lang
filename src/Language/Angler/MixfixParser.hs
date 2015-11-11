@@ -10,7 +10,7 @@ module Language.Angler.MixfixParser
 import           Language.Angler.AST
 import           Language.Angler.Error       hiding (ParseError)
 import           Language.Angler.Monad
-import           Language.Angler.ScopedTable hiding (elem, empty, toList)
+import           Language.Angler.ScopedTable hiding (elem, empty, fromList, toList)
 import qualified Language.Angler.ScopedTable as ST
 import           Language.Angler.SrcLoc
 
