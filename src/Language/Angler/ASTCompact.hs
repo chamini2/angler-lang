@@ -1,9 +1,11 @@
 module Language.Angler.ASTCompact where
 
 import qualified Language.Angler.AST as AST
+import           Language.Angler.SrcLoc
+
+import           Control.Lens
 
 import           Data.Sequence (Seq)
-import           Control.Lens
 
 type Identifier = AST.Identifier
 idn_str :: Lens' (Identifier a) String
@@ -18,10 +20,12 @@ data Module a
         , _mod_annot    :: a
         }
   deriving Show
+type ModuleSpan = Module SrcSpan
 
 newtype Body a
   = Body { _bod_stmts   :: Seq (BodyStmt a) }
   deriving Show
+type BodySpan = Body SrcSpan
 
 data BodyStmt a
   = Function
@@ -43,6 +47,7 @@ data BodyStmt a
         , _stm_annot    :: a
         }
   deriving Show
+type BodyStmtSpan = BodyStmt SrcSpan
 
 data Expression a
   = Var
@@ -88,19 +93,21 @@ data Expression a
         , _exp_annot    :: a
         }
   | CaseOf
-        { _case_args    :: Seq (Expression a)
-        , _case_cases   :: Seq (Case a)
+        { _case_arg     :: Expression a
+        , _case_alts    :: Seq (CaseAlt a)
         , _exp_annot    :: a
         }
   deriving Show
+type ExpressionSpan = Expression SrcSpan
 
-data Case a
-  = Case
-        { _case_pttrn   :: Seq (Argument a)
-        , _case_expr    :: Expression a
-        , _case_annot   :: a
+data CaseAlt a
+  = CaseAlt
+        { _calt_arg     :: Argument a
+        , _calt_expr    :: Expression a
+        , _calt_annot   :: a
         }
   deriving Show
+type CaseAltSpan = CaseAlt SrcSpan
 
 data ExpressionBind a
   = ExpressionBind
@@ -109,10 +116,12 @@ data ExpressionBind a
         , _bind_annot   :: a
         }
   deriving Show
+type ExpressionBindSpan = ExpressionBind SrcSpan
 
 type Associativity = AST.Associativity
 
 type Fixity = AST.Fixity
+type FixitySpan = Fixity SrcSpan
 fix_assoc :: Traversal' (Fixity a) Associativity
 fix_assoc = AST.fix_assoc
 fix_prec :: Traversal' (Fixity a) Int
@@ -121,23 +130,25 @@ fix_annot :: Lens' (Fixity a) a
 fix_annot = AST.fix_annot
 
 data Argument a
-  = VarBinding
-        { _arg_bind     :: ExpressionBind a
+  = NameBinding
+        { _arg_bind     :: String
         , _arg_annot    :: a
         }
-  | ApplyBinding
-        { _arg_paren    :: Expression a
+  | Pattern
+        { _arg_pattern  :: Expression a
         , _arg_annot    :: a
         }
   | DontCare
         { _arg_annot    :: a }
   deriving Show
+type ArgumentSpan = Argument SrcSpan
 
 type Literal = AST.Literal
+type LiteralSpan = Literal SrcSpan
 
 makeLenses ''Module
 makeLenses ''BodyStmt
 makeLenses ''Expression
-makeLenses ''Case
+makeLenses ''CaseAlt
 makeLenses ''ExpressionBind
 makeLenses ''Argument
