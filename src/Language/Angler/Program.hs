@@ -98,8 +98,8 @@ type WhereSpan f   = Where f SrcSpan
 type ExprWhere a   = Where Expression a
 type ExprWhereSpan = Where Expression SrcSpan
 
-whereToLet :: ExprWhere a -> Expression a
-whereToLet (Where ex mbd an) = if isJust mbd
+whereToExpression :: ExprWhere a -> Expression a
+whereToExpression (Where ex mbd an) = if isJust mbd
         then let Just bd = mbd in Let bd ex an
         else ex
 
@@ -342,7 +342,7 @@ instance PrettyShow (Expression a) where
                                 Var {}          -> return ()
                                 Lit {}          -> return ()
                                 ImplicitExpr {} -> return ()
-                                _ -> if paren then string s else return ()
+                                _ -> when paren (string s)
                         exprCase :: PrettyShowed
                         exprCase = case expr of
                                 Var str _  -> string "«" >> string str >> string "»"

@@ -11,7 +11,7 @@ module Language.Angler.ScopedTable
         , enterScope, exitScope
 
         , toList
-        , fromList, safeFromList
+        , fromFoldable, safeFromList
 
         -- on keys
         , mapKeys
@@ -72,8 +72,8 @@ toList = views tab_stack (proccess . concatMap Map.toList)
         proccess :: [(String, sym)] -> [(String, sym)]
         proccess = Map.toList . foldr (uncurry Map.insert) Map.empty
 
-fromList :: [(String, sym)] -> ScopedTable sym
-fromList = foldl (flip (uncurry insert)) empty
+fromFoldable :: Foldable f => f (String, sym) -> ScopedTable sym
+fromFoldable = foldl (flip (uncurry insert)) empty
 
 safeFromList :: [(String, sym)] -> Either Error (ScopedTable sym)
 safeFromList = foldl (\act (str,sym) -> act >>= safeInsert str sym) (Right empty)

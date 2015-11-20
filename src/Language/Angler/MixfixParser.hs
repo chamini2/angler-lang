@@ -10,7 +10,7 @@ module Language.Angler.MixfixParser
 import           Language.Angler.Program
 import           Language.Angler.Error       hiding (ParseError)
 import           Language.Angler.Monad
-import           Language.Angler.ScopedTable hiding (elem, empty, fromList, toList)
+import           Language.Angler.ScopedTable hiding (elem, empty, fromFoldable, toList)
 import qualified Language.Angler.ScopedTable as ST
 import           Language.Angler.SrcLoc
 
@@ -87,7 +87,13 @@ instance STScopedTable LoadPrecTableState Operator where
         st_table = id
 
 instance Default LoadPrecTableState where
-        def = ST.empty
+        def = ST.fromFoldable [arrowOperator]
+            where
+                arrowOperator :: (String, Operator)
+                arrowOperator = (str, op)
+                    where
+                        str = "_->_"
+                        op = Operator str (Infix RightAssoc 0 ())
 
 parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
 parseMixfix = over _Right fst . runMixfix . mixfixModule
