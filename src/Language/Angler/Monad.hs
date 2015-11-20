@@ -15,7 +15,8 @@ module Language.Angler.Monad
     , throwError
 
     , STScopedTable(..)
-    , lookupSc, insertSc
+    , lookupSc, lookupAndHandleSc
+    , insertSc, insertAndHandleSc
     , enterSc, exitSc, bracketSc
     ) where
 
@@ -24,11 +25,13 @@ import           Language.Angler.SrcLoc
 import           Language.Angler.ScopedTable
 
 import           Control.Lens
+
+import           Control.Monad               (when)
 import           Control.Monad.State         (MonadState)
 import           Control.Monad.Except        (throwError)
 
 import           Data.Foldable               (foldl')
-import           Data.Maybe                  (fromMaybe)
+import           Data.Maybe                  (isJust, isNothing, fromMaybe)
 
 import           Prelude                     hiding (lookup)
 
@@ -70,12 +73,28 @@ class STScopedTable st sym | st -> sym where
 lookupSc :: (STScopedTable s sym, MonadState s m) => String -> m (Maybe sym)
 lookupSc = uses st_table . lookup
 
+lookupAndHandleSc :: (STScopedTable s sym, MonadState s m, STErrors s)
+                  => String -> SrcSpan -> m (Maybe sym)
+lookupAndHandleSc str spn = do
+        msym <- lookupSc str
+        when (isNothing msym)
+                ((addError . Loc spn . CheckError . CErrNotInSymbolTable) str)
+        return msym
+
 insertSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m (Maybe Error)
 insertSc str sym = do
         eitTab <- uses st_table (safeInsert str sym)
         case eitTab of
                 Left err   -> return (Just err)
                 Right tab' -> assign st_table tab' >> return Nothing
+
+insertAndHandleSc :: (STScopedTable s sym, MonadState s m, STErrors s)
+                  => String -> sym -> SrcSpan -> m ()
+insertAndHandleSc str sym spn = do
+        merr <- insertSc str sym
+        when (isJust merr) $ do
+                let Just err = merr
+                addError (Loc spn err)
 
 enterSc :: (STScopedTable s sym, MonadState s m) => m ()
 enterSc = st_table %= enterScope
