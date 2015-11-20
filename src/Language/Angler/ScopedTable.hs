@@ -20,6 +20,8 @@ module Language.Angler.ScopedTable
 
 import           Language.Angler.Error
 
+import           PrettyShow
+
 import           Control.Lens               hiding (op)
 
 import           Data.Foldable              (msum)
@@ -83,3 +85,6 @@ mapKeys f = over (tab_stack.traverse) (Map.mapKeys f)
 
 filterByKey :: (String -> Bool) -> ScopedTable sym -> ScopedTable sym
 filterByKey f = over (tab_stack.traverse) (Map.filterWithKey (\s _ -> f s))
+
+instance PrettyShow sym => PrettyShow (ScopedTable sym) where
+        pshow = pshows line . (map snd . toList)
