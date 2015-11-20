@@ -1,2 +1,5 @@
-open Count : Type
-open Count : Type
+operator <_;_> closed
+operator <_&_> closed
+
+open <_;_> : Type -> Type -> Type with
+        <_&_> : forall x:Type, y:Type . x -> y -> < x ; y >

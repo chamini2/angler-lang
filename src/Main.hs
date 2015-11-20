@@ -78,28 +78,30 @@ readModule options filepath handle = do
                 printStage "lexer" (Just lexSecs)
 
         (parseProg,parseSecs) <- stopwatch $ case parseProgram input loc of
-                Right (ast,ws) -> mapM_ print ws >> evaluate ast
-                Left  err      -> pshowError err
+                Right (prog,ws) -> mapM_ print ws >> evaluate prog
+                Left  err       -> pshowError err
         when (view opt_ast options || view opt_verbose options) $ do
                 printStage "parser" Nothing
                 putStrLn (prettyShow parseProg)
                 printStage "parser" (Just parseSecs)
 
-        -- imprts <- readImports imprtsOpts ast
+        -- imprts <- readImports imprtsOpts prog
 
         (mixfixProg,mixfixSecs) <- stopwatch $ case parseMixfix parseProg of
-                Right ast  -> evaluate ast
+                Right prog -> evaluate prog
                 Left  errs -> pshowErrors errs
         when (view opt_mixfix options || view opt_verbose options) $ do
                 printStage "mixfix parser" Nothing
                 putStrLn (prettyShow mixfixProg)
                 printStage "mixfix parser" (Just mixfixSecs)
 
-        -- (symbolTable,compactedSecs) <- stopwatch $ evaluate (compactAST mixfixProg)
-        -- when (view opt_compact options || view opt_verbose options) $ do
-        --         printStage "compact" Nothing
-        --         putStrLn (prettyShow symbolTable)
-        --         printStage "compact" (Just compactedSecs)
+        (compactTab,compactSecs) <- stopwatch $ case compactAST mixfixProg of
+                Right (symTab,ws) -> mapM_ print ws >> evaluate symTab
+                Left  errs        -> pshowErrors errs
+        when (view opt_compact options || view opt_verbose options) $ do
+                printStage "compact" Nothing
+                putStrLn (prettyShow compactTab)
+                printStage "compact" (Just compactSecs)
 
         return undefined
     where
