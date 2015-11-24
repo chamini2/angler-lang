@@ -218,6 +218,12 @@ data Argument a
   deriving Show
 type ArgumentSpan = Argument SrcSpan
 
+getHeadArgumentString :: Argument a -> String
+getHeadArgumentString arg = case arg of
+        VarBinding str _    -> str
+        ApplyBinding args _ -> getHeadArgumentString (args^?!_head)
+        DontCare _          -> "_"
+
 type Implicits a = Seq (ImplicitBinding a)
 type ImplicitsSpan = Implicits SrcSpan
 
