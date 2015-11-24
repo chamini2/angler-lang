@@ -15,13 +15,16 @@ import           Control.Applicative         (empty)
 
 import           Control.Lens
 
-import           Control.Monad               (when)
+import           Control.Monad               (void, when)
 import           Control.Monad.State         (State, runState)
 
 import           Data.Default                (Default(..))
 import           Data.Foldable               (forM_, toList)
 import           Data.Function               (on)
 import           Data.Maybe                  (isJust, isNothing, fromMaybe)
+import           Data.Sequence               (Seq, drop)
+
+import           Prelude                     hiding (drop)
 
 --------------------------------------------------------------------------------
 -- Compact monad
@@ -60,16 +63,18 @@ instance Default CompactState where
                 typeSym = (str, sym)
                     where
                         str = "Type"
-                        sym = SymbolType str (noInfo TypeType) True
+                        sym = SymbolType str typeType True
                 arrowSym :: (String, SymbolSpan)
                 arrowSym = (str, sym)
                     where
                         str = "_->_"
-                        sym = SymbolFunction str arrTyp empty True
+                        sym = SymbolConstructor str "Type" arrTyp
                         arrTyp :: ExpressionSpan
-                        arrTyp = noInfo (Arrow (noInfo TypeType) (noInfo (Arrow (noInfo TypeType) (noInfo TypeType))))
-                noInfo :: (SrcSpan -> a) -> a
-                noInfo cns = cns SrcSpanNoInfo
+                        arrTyp = arrExpr typeType (arrExpr typeType typeType)
+                typeType :: TypeSpan
+                typeType = TypeType SrcSpanNoInfo
+                arrExpr :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
+                arrExpr f t = Arrow f t SrcSpanNoInfo
 
 compactAST :: P.ModuleSpan -> Either [Located Error] (SymbolTableSpan, [Located Warning])
 compactAST = handleEither . snd . flip runCompact def . compactModule
@@ -89,109 +94,104 @@ compactModule :: P.ModuleSpan -> Compact ()
 compactModule = compactBody . view P.mod_body
 
 compactBody :: P.BodySpan -> Compact ()
-compactBody = undefined
-{-
-compactBody :: P.BodySpan -> Compact ()
 compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
     where
         loadTableBodyStmt :: P.BodyStmtSpan -> Compact ()
         loadTableBodyStmt stmt = case stmt of
                 P.OpenType idn typ mcns an -> do
-                        typ' <- compactExprWhere typ
                         let str = view idn_str idn
-                            sym = SymbolType str typ' True
-
+                        typ' <- compactExprWhere typ
+                        let sym = SymbolType str typ' True
                         insertAndHandleSc str sym an
-                        mapM_ (compactConstructor typ') (fromMaybe empty mcns)
+                        mapM_ (compactConstructor str) (fromMaybe empty mcns)
 
                 P.ReopenType idn cns an -> do
-                        msym <- lookupAndHandleSc (view idn_str idn) an
-                        forM_ msym $ \sym -> case preview sym_open sym of
-                                Just True -> do
-                                        let SymbolType _ typ _ = sym
-                                        mapM_ (compactConstructor typ) cns
-                                _ -> addCError (CErrExpectingInsteadOf "open type" (symbolStr sym)) an
+                        let str = view idn_str idn
+                        msym <- lookupAndHandleSc str an
+                        when (isJust msym) $ do
+                                let Just sym = msym
+                                if isSymType sym && (sym^?!sym_open)
+                                        then mapM_ (compactConstructor (view sym_idn sym)) cns
+                                        else addCError (CErrExpectingInsteadOf "open type" (symbolStr sym)) an
 
-                P.OperatorDef idn fix an -> do
-                        let str = "operator " ++ view idn_str idn
-                            sym = SymbolOperator str fix
+                P.ClosedType idn typ cns an -> do
+                        let str = view idn_str idn
+                        typ' <- compactExprWhere typ
+                        let sym = SymbolType str typ' False
                         insertAndHandleSc str sym an
+                        mapM_ (compactConstructor str) cns
+
+                P.FunctionDecl idn typ an -> do
+                        let str = view idn_str idn
+                        typ' <- compactExprWhere typ
+                        let sym = SymbolFunction str typ' empty
+                        insertAndHandleSc str sym an
+
+                P.FunctionDef arg def an -> do
+                        let str = P.getHeadArgumentString arg
+                        (args', def') <- bracketSc $ do
+                                args' <- compactFunctionArgument arg
+                                def' <- compactExprWhere def
+                                return (args', def')
+                        msym <- lookupAndHandleSc str an
+                        when (isJust msym) $ do
+                                let Just sym = msym
+                                    sym' = over sym_defs (|> (args', def')) sym
+                                if isSymFunction sym
+                                        then replaceSc str sym'
+                                        else addCError (CErrExpectingInsteadOf "function" (symbolStr sym)) an
+                    where
+                        compactFunctionArgument :: P.ArgumentSpan -> Compact (Seq ArgumentSpan)
+                        compactFunctionArgument arg = case arg of
+                                P.ApplyBinding args _ -> mapM compactArgument (drop 1 args)
+                                _                     -> return empty
+
+                P.OperatorDef {} -> return ()
+
+compactConstructor :: String -> P.TypeBindSpan -> Compact ()
+compactConstructor dat (P.TypeBind idn def an) = do
+        let str = view idn_str idn
+        def' <- compactExprWhere def
+        let sym = SymbolConstructor str dat def'
+        insertAndHandleSc str sym an
 
 compactExprWhere :: P.ExprWhereSpan -> Compact ExpressionSpan
 compactExprWhere = compactExpression . P.whereToExpression
 
 compactExpression :: P.ExpressionSpan -> Compact ExpressionSpan
-compactExpression expr = bracketSc $ case expr of
+compactExpression expr = case expr of
         P.Var str an -> lookupAndHandleSc str an >> return (Var str an)
         P.Lit lit an -> return (Lit lit an)
-        P.Apply xs an -> mapM compactExpression xs >>= return . foldr1 go
+        P.Apply xs an -> mapM compactExpression xs >>= return . foldl1 go
             where
                 go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
                 go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
-                           in  Apply fn ov spn
+                           in Apply fn ov spn
+        P.Lambda arg x an -> bracketSc $ do
+                arg' <- compactArgument arg
+                x' <- compactExpression x
+                return (Lambda arg' x' an)
+        P.Let bod x an -> bracketSc $ do
+                compactBody bod
+                x' <- compactExpression x
+                scope <- topSc
+                return (Let scope x' an)
 
-        P.Lambda arg expr an -> do
-                arg'  <- compactArgument arg
-                expr' <- compactExpression expr
-                return (Lambda arg' expr' an)
+        P.Forall {} -> error "expression Forall"
+        P.Exists {} -> error "expression Exists"
+        P.Select {} -> error "expression Select"
+        P.ImplicitExpr {} -> error "expression ImplicitExpr"
 
-        P.Let bdy expr an -> do
-                (tab', expr') <- bracketSc $ do
-                        compactBody bdy
-                        expr' <- compactExpression expr
-                        tab <- use cm_table
-                        return (tab, expr')
-                return (Let tab' expr' an)
-
-        P.Forall typs expr an -> bracketSc $ do
-                typs' <- mapM compactTypeBind typs
-                expr' <- compactExpression expr
-                return (Forall (toTab typs') expr' an)
-
-        P.Exists typ expr an -> do
-                typ' <- compactTypeBind typ
-                expr' <- compactExpression expr
-                return (Exists (toTab [typ']) expr' an)
-
-        P.Select typ an -> do
-                typ' <- compactTypeBind typ
-                return (Select typ' an)
-
-        P.ImplicitExpr imps an -> do
-                error "compactExpression: ImplicitExpr"
-    where
-        toTab :: (Foldable f, Functor f) => f TypeBindSpan -> SymbolTableSpan
-        toTab = ST.fromFoldable . fmap convert
-            where
-                convert :: TypeBindSpan -> (String, SymbolSpan)
-                convert bind = (str, sym)
-                    where
-                        str = view bind_name bind
-                        sym = SymbolVar str (view bind_type bind) Nothing True
-
-
-compactConstructor :: ExpressionSpan -> P.TypeBindSpan -> Compact ()
-compactConstructor typ (P.TypeBind idn cns an) = do
-        def <- compactExprWhere cns
-        let str = view idn_str idn
-            sym = SymbolFunction str typ empty True
-        insertAndHandleSc str sym an
-
-compactArgument :: P.ArgumentSpan -> Compact ExpressionSpan
-compactArgument arg = case arg of
-        P.VarBinding str an -> return (Var str an)
-        P.ApplyBinding as an -> mapM compactArgument as >>= return . foldr1 go
-            where
-                go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
-                go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
-                           in  Apply fn ov spn
+compactArgument :: P.ArgumentSpan -> Compact ArgumentSpan
+compactArgument arg' = case arg' of
         P.DontCare an -> return (DontCare an)
-
-compactTypeBind :: P.TypeBindSpan -> Compact TypeBindSpan
-compactTypeBind (P.TypeBind idn typ an) = do
-        typ' <- compactExprWhere typ
-        let str = view idn_str idn
-            sym = SymbolVar str typ'
-        insertAndHandleSc str sym (view idn_annot idn)
-        return (TypeBind str typ' an)
--}
+        P.VarBinding str an -> do
+                let sym = SymbolVar str (DontCare SrcSpanNoInfo) Nothing True
+                msym <- lookupSc str
+                when (isNothing msym) $ void (insertSc str sym)
+                return (Var str an)
+        P.ApplyBinding args an -> mapM compactArgument args >>= return . foldl1 go
+            where
+                go :: ArgumentSpan -> ArgumentSpan -> ArgumentSpan
+                go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
+                           in Apply fn ov spn

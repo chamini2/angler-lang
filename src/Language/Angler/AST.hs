@@ -82,8 +82,12 @@ data Expression a
         { _exp_annot    :: a }
   deriving Show
 type ExpressionSpan = Expression SrcSpan
-type Type = Expression
-type Argument = Expression
+
+type Type           = Expression
+type TypeSpan       = Expression SrcSpan
+
+type Argument       = Expression
+type ArgumentSpan   = Expression SrcSpan
 
 -- data CaseAlt a
 --   = CaseAlt
@@ -127,13 +131,17 @@ data Symbol a
   = SymbolFunction
         { _sym_idn      :: String
         , _sym_type     :: Type a
-        , _sym_def      :: Seq (Seq (Argument a), Expression a)
-        , _sym_cons     :: Bool
+        , _sym_defs     :: Seq (Seq (Argument a), Expression a)
         }
   | SymbolType
         { _sym_idn      :: String
         , _sym_type     :: Type a
         , _sym_open     :: Bool
+        }
+  | SymbolConstructor
+        { _sym_idn      :: String
+        , _sym_data     :: String
+        , _sym_def      :: Type a
         }
   | SymbolVar
         { _sym_idn      :: String
@@ -151,6 +159,34 @@ type SymbolSpan = Symbol SrcSpan
 makeLenses ''Expression
 makeLenses ''TypeBind
 makeLenses ''Symbol
+
+isSymFunction :: Symbol a -> Bool
+isSymFunction sym = case sym of
+        SymbolFunction {} -> True
+        _                 -> False
+
+isSymType :: Symbol a -> Bool
+isSymType sym = case sym of
+        SymbolType {} -> True
+        _             -> False
+
+isSymVar :: Symbol a -> Bool
+isSymVar sym = case sym of
+        SymbolVar {} -> True
+        _            -> False
+
+isSymOperator :: Symbol a -> Bool
+isSymOperator sym = case sym of
+        SymbolOperator {} -> True
+        _                 -> False
+
+symbolStr :: Symbol a -> String
+symbolStr sym = case sym of
+        SymbolFunction {}    -> "function"
+        SymbolType {}        -> (if sym^?!sym_open then "open" else "closed") ++ " type"
+        SymbolConstructor {} -> "constructor"
+        SymbolVar {}         -> "var"
+        SymbolOperator {}    -> "operator"
 
 --------------------------------------------------------------------------------
 -- PrettyShow
@@ -171,7 +207,7 @@ instance PrettyShow (Expression a) where
                         exprCase = case expr of
                                 Var str _  -> string "«" >> string str >> string "»"
                                 Lit lit _  -> pshow lit
-                                Apply fn ex _ -> pshow' True fn >> string " " >> pshow' True ex
+                                Apply fn ov _ -> pshow' True fn >> string " " >> pshow' True ov
                                 Lambda arg x _ -> do
                                         string "\\ " >> pshow arg
                                         string " -> " >> pshow x
@@ -205,15 +241,15 @@ instance PrettyShow (TypeBind a) where
 
 instance PrettyShow (Symbol a) where
         pshow sym = case sym of
-                SymbolFunction str typ defs _ -> do
+                SymbolFunction str typ defs -> do
                         string str >> string " : " >> pshow typ
-                        pshows' defs
+                        raise >> pshows' defs >> lower
                     where
-                        pshows' :: (PrettyShow a, PrettyShow b, Foldable f, Foldable g)
-                                => f (g a, b) -> PrettyShowed
+                        pshows' :: (PrettyShow a, Foldable f) => f (f a, a) -> PrettyShowed
                         pshows' = mapM_ $ \(args, expr) -> do
-                                string str
-                                pshows (string " ") args
+                                line
+                                string str >> string " "
+                                pshows (string " , ") args
                                 string " = "
                                 pshow expr
 
@@ -221,35 +257,12 @@ instance PrettyShow (Symbol a) where
                         string (if open then "open" else "closed")
                         string " "
                         string str >> string " : " >> pshow typ
+
+                SymbolConstructor str _ def ->
+                        string str >> string " : " >> pshow def
+
                 SymbolVar str typ _ _ ->
                         string str >> string " : " >> pshow typ
+
                 SymbolOperator str fix ->
                         string "operator " >> string str >> string " " >> pshow fix
-
-
-isSymFunction :: Symbol a -> Bool
-isSymFunction sym = case sym of
-        SymbolFunction {} -> True
-        _                 -> False
-
-isSymType :: Symbol a -> Bool
-isSymType sym = case sym of
-        SymbolType {} -> True
-        _             -> False
-
-isSymVar :: Symbol a -> Bool
-isSymVar sym = case sym of
-        SymbolVar {} -> True
-        _            -> False
-
-isSymOperator :: Symbol a -> Bool
-isSymOperator sym = case sym of
-        SymbolOperator {} -> True
-        _                 -> False
-
-symbolStr :: Symbol a -> String
-symbolStr sym = case sym of
-        SymbolFunction {} -> "function"
-        SymbolType {}     -> (if sym^?!sym_open then "open" else "closed") ++ " type"
-        SymbolVar {}      -> "var"
-        SymbolOperator {} -> "operator"

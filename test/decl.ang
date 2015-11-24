@@ -1,5 +1,25 @@
 operator <_;_> closed
 operator <_&_> closed
 
+open Count : Type
+
 open <_;_> : Type -> Type -> Type with
-        <_&_> : forall x:Type, y:Type . x -> y -> < x ; y >
+        <_&_> : < Count ; Count >
+        -- <_&_> : forall x:Type, y:Type . x -> y -> < x ; y >
+
+reopen Count with
+        One : Count
+
+closed Bool : Type with
+        True : Bool
+        False : Bool
+
+closed Nat : Type  with
+        Z : Nat
+        S : Nat -> Nat
+
+operator _+_ infixL 10
+
+_+_ : Nat -> Nat -> Nat
+Z + n   = n
+S m + n = S (m + n)
