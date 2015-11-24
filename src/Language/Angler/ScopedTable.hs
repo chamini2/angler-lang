@@ -5,13 +5,14 @@ module Language.Angler.ScopedTable
         -- basic
         , empty
         , lookup , elem, elemInCurrentScope
-        , insertWith, safeInsert
+        , insertWith, safeInsert, insert
 
         -- scope handling
         , enterScope, exitScope
 
         , toList
-        , fromFoldable, safeFromList
+        , topScope
+        , fromFoldable, safeFromFoldable
 
         -- on keys
         , mapKeys
@@ -64,9 +65,9 @@ safeInsert str sym tab = if elemInCurrentScope str tab
         then (Left . CheckError . CErrAlreadyInSymbolTable) str
         else Right (insert str sym tab)
 
--- This overwrites the symbol in the top scope
+-- overwrites the symbol in the top scope
 insert :: String -> sym -> ScopedTable sym -> ScopedTable sym
-insert str sym = over (tab_stack._head) (Map.insert str sym)
+insert = insertWith const
 
 toList :: ScopedTable sym -> [(String, sym)]
 toList = views tab_stack (proccess . concatMap Map.toList)
@@ -74,11 +75,14 @@ toList = views tab_stack (proccess . concatMap Map.toList)
         proccess :: [(String, sym)] -> [(String, sym)]
         proccess = Map.toList . foldr (uncurry Map.insert) Map.empty
 
+topScope :: ScopedTable sym -> ScopedTable sym
+topScope = over tab_stack (pure . head)
+
 fromFoldable :: Foldable f => f (String, sym) -> ScopedTable sym
 fromFoldable = foldl (flip (uncurry insert)) empty
 
-safeFromList :: [(String, sym)] -> Either Error (ScopedTable sym)
-safeFromList = foldl (\act (str,sym) -> act >>= safeInsert str sym) (Right empty)
+safeFromFoldable :: Foldable f => f (String, sym) -> Either Error (ScopedTable sym)
+safeFromFoldable = foldl (\act (str,sym) -> act >>= safeInsert str sym) (Right empty)
 
 mapKeys :: (String -> String) -> ScopedTable sym -> ScopedTable sym
 mapKeys f = over (tab_stack.traverse) (Map.mapKeys f)

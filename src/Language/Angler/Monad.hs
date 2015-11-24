@@ -16,8 +16,8 @@ module Language.Angler.Monad
 
     , STScopedTable(..)
     , lookupSc, lookupAndHandleSc
-    , insertSc, insertAndHandleSc
-    , enterSc, exitSc, bracketSc
+    , insertSc, insertAndHandleSc, replaceSc
+    , enterSc, exitSc, bracketSc, topSc
     ) where
 
 import           Language.Angler.Error
@@ -96,6 +96,9 @@ insertAndHandleSc str sym spn = do
                 let Just err = merr
                 addError (Loc spn err)
 
+replaceSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m ()
+replaceSc str sym = st_table %= (insert str sym)
+
 enterSc :: (STScopedTable s sym, MonadState s m) => m ()
 enterSc = st_table %= enterScope
 
@@ -104,3 +107,6 @@ exitSc = st_table %= exitScope
 
 bracketSc :: (STScopedTable s sym, MonadState s m) => m a -> m a
 bracketSc act = enterSc >> act >>= \r -> exitSc >> return r
+
+topSc :: (STScopedTable s sym, MonadState s m) => m (ScopedTable sym)
+topSc = uses st_table topScope
