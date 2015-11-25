@@ -31,10 +31,12 @@ import qualified Data.Map.Strict            as Map
 import           Prelude                    hiding (elem, lookup)
 import qualified Prelude                    as P (elem)
 
+type Table sym = Map.Map String sym
+
 -- interface for a scoped symbol table
 newtype ScopedTable sym
   = ScopedTable
-        { _tab_stack    :: [Map.Map String sym] }
+        { _tab_stack    :: [ Table sym ] }
   deriving Show
 
 makeLenses ''ScopedTable

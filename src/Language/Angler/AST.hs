@@ -9,8 +9,7 @@ import           PrettyShow
 import           Control.Lens
 import           Control.Monad               (when)
 
-import           Data.Map                    (Map)
-
+import           Data.Maybe                  (isJust)
 import           Data.Sequence               (Seq)
 
 --------------------------------------------------------------------------------
@@ -58,11 +57,11 @@ data Expression a
         , _exp_annot    :: a
         }
   | Select
-        { _slct_type    :: TypeBind a
+        { _slct_type    :: Symbol a
         , _exp_annot    :: a
         }
   | Implicit
-        { _impl_exprs   :: Map String (Expression a)
+        { _impl_exprs   :: SymbolTable a
         , _exp_annot    :: a
         }
   -- | CaseOf
@@ -145,7 +144,7 @@ data Symbol a
         }
   | SymbolVar
         { _sym_idn      :: String
-        , _sym_type     :: Type a
+        , _sym_may_type :: Maybe (Type a)
         , _sym_val      :: Maybe (Expression a)
         , _sym_free     :: Bool
         }
@@ -223,7 +222,7 @@ instance PrettyShow (Expression a) where
                                         pshow x
                                 Forall typs x _ -> do
                                         string "forall "
-                                        pshow typs
+                                        pshows (string ", ") (snd <$> toList typs)
                                         string " . "
                                         pshow x
                                 Exists typ x _ -> do
@@ -231,7 +230,7 @@ instance PrettyShow (Expression a) where
                                         string " . " >> pshow x
                                 Select typ _ -> string "select " >> pshow typ
                                 Implicit ims _ ->
-                                        string "{" >> pshows (string ", ") ims >> string "}"
+                                        string "{" >> pshows (string ", ") (snd <$> toList ims) >> string "}"
                                 DontCare _ -> string "_"
                                 Arrow f t _ -> pshow f >> string " -> " >> pshow t
                                 TypeType _ -> string "Type"
@@ -261,8 +260,16 @@ instance PrettyShow (Symbol a) where
                 SymbolConstructor str _ def ->
                         string str >> string " : " >> pshow def
 
-                SymbolVar str typ _ _ ->
-                        string str >> string " : " >> pshow typ
+                SymbolVar str mtyp mval _ -> do
+                        string "("
+                        string str
+                        when (isJust mtyp) $ do
+                                let Just typ = mtyp
+                                string " : " >> pshow typ
+                        when (isJust mval) $ do
+                                let Just val = mval
+                                string " = " >> pshow val
+                        string ")"
 
                 SymbolOperator str fix ->
                         string "operator " >> string str >> string " " >> pshow fix

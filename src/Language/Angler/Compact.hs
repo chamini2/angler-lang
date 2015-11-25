@@ -159,34 +159,72 @@ compactExprWhere :: P.ExprWhereSpan -> Compact ExpressionSpan
 compactExprWhere = compactExpression . P.whereToExpression
 
 compactExpression :: P.ExpressionSpan -> Compact ExpressionSpan
-compactExpression expr = case expr of
-        P.Var str an -> lookupAndHandleSc str an >> return (Var str an)
-        P.Lit lit an -> return (Lit lit an)
-        P.Apply xs an -> mapM compactExpression xs >>= return . foldl1 go
-            where
-                go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
-                go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
-                           in Apply fn ov spn
-        P.Lambda arg x an -> bracketSc $ do
-                arg' <- compactArgument arg
-                x' <- compactExpression x
-                return (Lambda arg' x' an)
-        P.Let bod x an -> bracketSc $ do
-                compactBody bod
-                x' <- compactExpression x
-                scope <- topSc
-                return (Let scope x' an)
+compactExpression = bracketSc . processExpression
+    where
+        processExpression :: P.ExpressionSpan -> Compact ExpressionSpan
+        processExpression expr = case expr of
+                P.Var str an -> lookupAndHandleSc str an >> return (Var str an)
 
-        P.Forall {} -> error "expression Forall"
-        P.Exists {} -> error "expression Exists"
-        P.Select {} -> error "expression Select"
-        P.ImplicitExpr {} -> error "expression ImplicitExpr"
+                P.Lit lit an -> return (Lit lit an)
+
+                P.Apply xs an -> mapM processExpression xs >>= return . foldl1 go
+                    where
+                        go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
+                        go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
+                                   in Apply fn ov spn
+
+                P.Lambda arg x an -> bracketSc $ do
+                        arg' <- compactArgument arg
+                        x' <- processExpression x
+                        return (Lambda arg' x' an)
+
+                P.Let bod x an -> bracketSc $ do
+                        compactBody bod
+                        x' <- processExpression x
+                        scope <- topSc
+                        return (Let scope x' an)
+
+                P.Forall typs x an -> bracketSc $ do
+                        mapM_ compactTypeBind typs
+                        x' <- processExpression x
+                        scope <- topSc
+                        return (Forall scope x' an)
+
+                P.Exists typ x an -> bracketSc $ do
+                        compactTypeBind typ
+                        x' <- processExpression x
+                        scope <- topSc
+                        return (Exists scope x' an)
+
+                P.Select typ an -> do
+                        sym <- compactTypeBind typ
+                        return (Select sym an)
+
+                P.ImplicitExpr impls an -> bracketSc $ do
+                        mapM_ compactImplicits impls
+                        scope <- topSc
+                        return (Implicit scope an)
+                    where
+                        compactImplicits :: P.ImplicitBindingSpan -> Compact ()
+                        compactImplicits (P.ImplicitBind idn x an) = do
+                                let str = view idn_str idn
+                                x' <- compactExpression x
+                                let sym = SymbolVar str Nothing (Just x') False
+                                insertAndHandleSc str sym an
+
+compactTypeBind :: P.TypeBindSpan -> Compact SymbolSpan
+compactTypeBind (P.TypeBind idn typ an) = do
+        let str = view idn_str idn
+        typ' <- compactExprWhere typ
+        let sym = SymbolVar str (Just typ') Nothing True
+        insertAndHandleSc str sym an
+        return sym
 
 compactArgument :: P.ArgumentSpan -> Compact ArgumentSpan
 compactArgument arg' = case arg' of
         P.DontCare an -> return (DontCare an)
         P.VarBinding str an -> do
-                let sym = SymbolVar str (DontCare SrcSpanNoInfo) Nothing True
+                let sym = SymbolVar str Nothing Nothing True
                 msym <- lookupSc str
                 when (isNothing msym) $ void (insertSc str sym)
                 return (Var str an)

@@ -1,7 +1,13 @@
 export (Nat, filter)
 
-import List as L (_::_, Nil)
-import List (List)
+-- import List as L (_::_, Nil)
+-- import List (List)
+
+closed List : Type -> Type with
+        Nil  : forall t:Type . List t
+        _::_ : forall t:Type . t -> List t -> List t
+
+open Char : Type
 
 id : forall t:Type . t -> t
 the : (select t:Type) -> t -> t
@@ -9,15 +15,9 @@ the : (select t:Type) -> t -> t
 id x = x
 the t x = id { t = t } x
 
--- probably impossible
--- typeOf : exists t:Type ; t -> t
--- typeOf x = x
-typeOf : forall x:Type . x -> (exists t:Type1 . (select x : t))
-typeOf x = x
-
 operator _._ infixL 10
 _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
-(f . g) x = f (g x)
+_._ f g x = f (g x)
 
 operator _$_ infixL 1
 _$_ : forall a:Type, b:Type . (a -> b) -> a -> b
@@ -55,21 +55,23 @@ open Currency : Type with
 foldr : forall x:Type, y:Type . (x -> y -> y) -> y -> List x -> y
 foldr f (x :: xs) y = f x rest
         where
+                rest : forall y:Type . y
                 rest = foldr f xs y
-foldr _ Nil       y = y
+foldr _ Nil y = y
 
 operator if_then_else_ prefix 0
 if_then_else_ : forall t:Type . Bool -> t -> t -> t
 if_then_else_ True yes _ = yes
 if_then_else_ False _ no = no
 
-closed Vect : Nat -> (select t:Type) -> Type with
-        Nil  : Vect Z t
-        _::_ : forall n:Nat . t -> Vect n t -> Vect (S n) t
+closed Vect : Nat -> Type -> Type with
+        VNil  : forall t:Type . Vect Z t
+        _:::_ : forall t:Type, n:Nat . t -> Vect n t -> Vect (S n) t
 
 operator _+_ infixL 3
 _+_ : t -> t -> t
-        where t = Nat
+        where   t : Type
+                t = Nat
 -- t no está disponible aquí
 Z     +   m = m
 (S n) +   m = S (n + m)
@@ -77,11 +79,11 @@ _+_ Z     m = m
 _+_ (S n) m = S (n + m)
 
 filter : forall t:Type . (t -> Bool) -> List t -> List t
-filter g (x L.:: xs) =
+filter g (x :: xs) =
         (if g x
-                then L._::_ x
+                then _::_ x
                 else id) filter g xs
-filter _ (L.Nil) = L.Nil
+filter _ (Nil) = Nil
 
 filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists m:Nat . Vect m t
 filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
@@ -94,6 +96,9 @@ const = \ _ x -> x
 
 zeroes : List Nat -> List Nat
 zeroes = filter $ \Z -> True
+
+map : forall a:Type, b:Type . (a -> b) -> List a -> List b
+map f = foldr (_::_ . f) Nil
 
 ones : List Nat -> List Nat
 ones = map S . zeroes
@@ -109,10 +114,16 @@ _=_ : Type -> Type -> Type
 
 -- f = \ -> n -> n      -- parse error: no arguments for lambda
 
+operator <_&_> closed
+operator <_/\_> closed
+closed <_&_> : Type -> Type -> Type with
+        <_/\_> : forall a:Type, b:Type . a -> b -> < a & b >
 -- : : String -> Type -> (String & Type) -- parser error: ':' unexpected
-:* : String -> Type -> (String & Type)
-:* str typ = str /\ typ
+:* : String -> Type -> < String & Type >
+:* str typ = < str /\ typ >
 
 f : Nat
-f = 2 + let a = 3
+f = 2 + let a : Nat
+            a = 3
+            b : Nat
             b = a + 2 in a

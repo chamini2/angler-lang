@@ -1,11 +1,16 @@
-operator <_;_> closed
-operator <_&_> closed
+id : forall t:Type . t -> t
+id x = x
+
+the : (select t:Type) -> t -> t
+the _ x = x
 
 open Count : Type
 
+operator <_;_> closed
+operator <_&_> closed
+
 open <_;_> : Type -> Type -> Type with
-        <_&_> : < Count ; Count >
-        -- <_&_> : forall x:Type, y:Type . x -> y -> < x ; y >
+        <_&_> : forall x:Type, y:Type . x -> y -> < x ; y >
 
 reopen Count with
         One : Count
@@ -13,6 +18,11 @@ reopen Count with
 closed Bool : Type with
         True : Bool
         False : Bool
+
+operator if_then_else_ prefix 1
+if_then_else_ : forall x:Type . Bool -> x -> x
+if True then x else _ = x
+if False then _ else y = y
 
 closed Nat : Type  with
         Z : Nat
@@ -23,3 +33,17 @@ operator _+_ infixL 10
 _+_ : Nat -> Nat -> Nat
 Z + n   = n
 S m + n = S (m + n)
+
+operator _::_ infixR 10
+
+closed Vect : Nat -> Type -> Type with
+        Nil  : forall x:Type        . Vect Z x
+        _::_ : forall x:Type, n:Nat . x -> Vect n x -> Vect (n + 1) x
+
+map : forall a:Type, b:Type, n:Nat . (a -> b) -> Vect n a -> Vect n b
+map _ Nil       = Nil
+map f (x :: xs) = f x :: map f xs
+
+filter : forall x:Type, n:Nat . (x -> Bool) -> Vect n x -> exists m:Nat . Vect m x
+filter _ Nil     = Nil
+filter g (x::xs) = (if g x then _::_ x else id) (filter g xs)
