@@ -36,6 +36,9 @@ S m + n = S (m + n)
 
 operator _::_ infixR 10
 
+_~>_ : Type -> Type -> Type
+_~>_ = _->_
+
 closed Vect : Nat -> Type -> Type with
         Nil  : forall x:Type        . Vect Z x
         _::_ : forall x:Type, n:Nat . x -> Vect n x -> Vect (n + 1) x

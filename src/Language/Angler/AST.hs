@@ -134,18 +134,14 @@ data Symbol a
         }
   | SymbolType
         { _sym_idn      :: String
+        , _sym_data     :: String
         , _sym_type     :: Type a
         , _sym_open     :: Bool
-        }
-  | SymbolConstructor
-        { _sym_idn      :: String
-        , _sym_data     :: String
-        , _sym_def      :: Type a
         }
   | SymbolVar
         { _sym_idn      :: String
         , _sym_may_type :: Maybe (Type a)
-        , _sym_val      :: Maybe (Expression a)
+        , _sym_may_val  :: Maybe (Expression a)
         , _sym_free     :: Bool
         }
   | SymbolOperator
@@ -183,7 +179,6 @@ symbolStr :: Symbol a -> String
 symbolStr sym = case sym of
         SymbolFunction {}    -> "function"
         SymbolType {}        -> (if sym^?!sym_open then "open" else "closed") ++ " type"
-        SymbolConstructor {} -> "constructor"
         SymbolVar {}         -> "var"
         SymbolOperator {}    -> "operator"
 
@@ -252,13 +247,10 @@ instance PrettyShow (Symbol a) where
                                 string " = "
                                 pshow expr
 
-                SymbolType str typ open -> do
+                SymbolType str _ typ open -> do
                         string (if open then "open" else "closed")
                         string " "
                         string str >> string " : " >> pshow typ
-
-                SymbolConstructor str _ def ->
-                        string str >> string " : " >> pshow def
 
                 SymbolVar str mtyp mval _ -> do
                         string "("

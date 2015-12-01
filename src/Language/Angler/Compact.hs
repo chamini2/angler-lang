@@ -64,18 +64,18 @@ instance Default CompactState where
                 typeSym = (str, sym)
                     where
                         str = "Type"
-                        sym = SymbolType str typeType True
+                        sym = SymbolType str "Type" typeType True
                 arrowSym :: (String, SymbolSpan)
                 arrowSym = (str, sym)
                     where
                         str = "_->_"
-                        sym = SymbolConstructor str "Type" arrTyp
+                        sym = SymbolType str "Type" arrTyp False
                         arrTyp :: ExpressionSpan
                         arrTyp = arrExpr typeType (arrExpr typeType typeType)
+                        arrExpr :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
+                        arrExpr f t = Arrow f t SrcSpanNoInfo
                 typeType :: TypeSpan
                 typeType = TypeType SrcSpanNoInfo
-                arrExpr :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
-                arrExpr f t = Arrow f t SrcSpanNoInfo
 
 compactAST :: P.ModuleSpan -> Either [Located Error] (SymbolTableSpan, [Located Warning])
 compactAST = handleEither . snd . flip runCompact def . compactModule
@@ -102,7 +102,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                 P.OpenType idn typ mcns an -> do
                         let str = view idn_str idn
                         typ' <- compactExprWhere typ
-                        let sym = SymbolType str typ' True
+                        let sym = SymbolType str "Type" typ' True
                         insertAndHandleSc str sym an
                         mapM_ (compactConstructor str) (fromMaybe empty mcns)
 
@@ -118,7 +118,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                 P.ClosedType idn typ cns an -> do
                         let str = view idn_str idn
                         typ' <- compactExprWhere typ
-                        let sym = SymbolType str typ' False
+                        let sym = SymbolType str "Type" typ' False
                         insertAndHandleSc str sym an
                         mapM_ (compactConstructor str) cns
 
@@ -153,7 +153,7 @@ compactConstructor :: String -> P.TypeBindSpan -> Compact ()
 compactConstructor dat (P.TypeBind idn def an) = do
         let str = view idn_str idn
         def' <- compactExprWhere def
-        let sym = SymbolConstructor str dat def'
+        let sym = SymbolType str dat def' False
         insertAndHandleSc str sym an
 
 compactExprWhere :: P.ExprWhereSpan -> Compact ExpressionSpan
