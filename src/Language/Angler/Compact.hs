@@ -25,6 +25,7 @@ import           Data.Maybe                  (isJust, isNothing, fromMaybe)
 import           Data.Sequence               (Seq, drop)
 
 import           Prelude                     hiding (drop)
+import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Compact monad
@@ -167,7 +168,13 @@ compactExpression = bracketSc . processExpression
 
                 P.Lit lit an -> return (Lit lit an)
 
-                P.Apply xs an -> mapM processExpression xs >>= return . foldl1 go
+                P.Apply xs an -> case toList xs of
+                        -- check for the specific case of arrow being used
+                        [P.Var "_->_" an, fr, to] -> do
+                                fr' <- processExpression fr
+                                to' <- processExpression to
+                                return (Arrow fr' to' an)
+                        _ -> mapM processExpression xs >>= return . foldl1 go
                     where
                         go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
                         go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
