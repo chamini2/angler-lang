@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+
 module Language.Angler.ScopedTable
         ( ScopedTable
         , tab_stack
@@ -37,7 +39,7 @@ type Table sym = Map.Map String sym
 newtype ScopedTable sym
   = ScopedTable
         { _tab_stack    :: [ Table sym ] }
-  deriving Show
+  deriving (Show, Functor, Foldable, Traversable)
 
 makeLenses ''ScopedTable
 
