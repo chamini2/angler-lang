@@ -19,13 +19,12 @@ import           Control.Monad               (void, when)
 import           Control.Monad.State         (State, runState)
 
 import           Data.Default                (Default(..))
-import           Data.Foldable               (forM_, toList)
+import           Data.Foldable               (toList)
 import           Data.Function               (on)
 import           Data.Maybe                  (isJust, isNothing, fromMaybe)
 import           Data.Sequence               (Seq, drop)
 
 import           Prelude                     hiding (drop)
-import           Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Compact monad
@@ -81,9 +80,9 @@ compactAST :: P.ModuleSpan -> Either [Located Error] (SymbolTableSpan, [Located 
 compactAST = handleEither . snd . flip runCompact def . compactModule
     where
         handleEither :: CompactState -> Either [Located Error] (SymbolTableSpan, [Located Warning])
-        handleEither st = let errs = view cm_errors   st
-                              tab  = view cm_table    st
-                              wrns = view cm_warnings st
+        handleEither st = let errs = view st_errors   st
+                              tab  = view st_table    st
+                              wrns = view st_warnings st
                           in if length errs > 0 then Left errs else Right (tab, wrns)
 
 runCompact :: Compact a -> CompactState -> (a, CompactState)
@@ -128,32 +127,32 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                         let sym = SymbolFunction str typ' empty
                         insertAndHandleSc str sym an
 
-                P.FunctionDef arg def an -> do
+                P.FunctionDef arg defn an -> do
                         let str = P.getHeadArgumentString arg
-                        (args', def') <- bracketSc $ do
+                        (args', defn') <- bracketSc $ do
                                 args' <- compactFunctionArgument arg
-                                def' <- compactExprWhere def
-                                return (args', def')
+                                defn' <- compactExprWhere defn
+                                return (args', defn')
                         msym <- lookupAndHandleSc str an
                         when (isJust msym) $ do
                                 let Just sym = msym
-                                    sym' = over sym_defs (|> (args', def')) sym
+                                    sym' = over sym_defs (|> (args', defn')) sym
                                 if isSymFunction sym
                                         then replaceSc str sym'
                                         else addCError (CErrExpectingInsteadOf "function" (symbolStr sym)) an
                     where
                         compactFunctionArgument :: P.ArgumentSpan -> Compact (Seq ArgumentSpan)
-                        compactFunctionArgument arg = case arg of
+                        compactFunctionArgument arg' = case arg' of
                                 P.ApplyBinding args _ -> mapM compactArgument (drop 1 args)
                                 _                     -> return empty
 
                 P.OperatorDef {} -> return ()
 
 compactConstructor :: String -> P.TypeBindSpan -> Compact ()
-compactConstructor dat (P.TypeBind idn def an) = do
+compactConstructor dat (P.TypeBind idn defn an) = do
         let str = view idn_str idn
-        def' <- compactExprWhere def
-        let sym = SymbolType str dat def' False
+        defn' <- compactExprWhere defn
+        let sym = SymbolType str dat defn' False
         insertAndHandleSc str sym an
 
 compactExprWhere :: P.ExprWhereSpan -> Compact ExpressionSpan
@@ -168,12 +167,12 @@ compactExpression = bracketSc . processExpression
 
                 P.Lit lit an -> return (Lit lit an)
 
-                P.Apply xs an -> case toList xs of
+                P.Apply xs _an -> case toList xs of
                         -- check for the specific case of arrow being used
-                        [P.Var "_->_" an, fr, to] -> do
-                                fr' <- processExpression fr
-                                to' <- processExpression to
-                                return (Arrow fr' to' an)
+                        [P.Var "_->_" van, arrfr, arrto] -> do
+                                arrfr' <- processExpression arrfr
+                                arrto' <- processExpression arrto
+                                return (Arrow arrfr' arrto' van)
                         _ -> mapM processExpression xs >>= return . foldl1 go
                     where
                         go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
@@ -198,7 +197,7 @@ compactExpression = bracketSc . processExpression
                         return (Forall scope x' an)
 
                 P.Exists typ x an -> bracketSc $ do
-                        compactTypeBind typ
+                        _ <- compactTypeBind typ
                         x' <- processExpression x
                         scope <- topSc
                         return (Exists scope x' an)
@@ -213,11 +212,11 @@ compactExpression = bracketSc . processExpression
                         return (Implicit scope an)
                     where
                         compactImplicits :: P.ImplicitBindingSpan -> Compact ()
-                        compactImplicits (P.ImplicitBind idn x an) = do
+                        compactImplicits (P.ImplicitBind idn x spn) = do
                                 let str = view idn_str idn
                                 x' <- compactExpression x
                                 let sym = SymbolVar str Nothing (Just x') False
-                                insertAndHandleSc str sym an
+                                insertAndHandleSc str sym spn
 
 compactTypeBind :: P.TypeBindSpan -> Compact SymbolSpan
 compactTypeBind (P.TypeBind idn typ an) = do
@@ -235,7 +234,7 @@ compactArgument arg' = case arg' of
                 msym <- lookupSc str
                 when (isNothing msym) $ void (insertSc str sym)
                 return (Var str an)
-        P.ApplyBinding args an -> mapM compactArgument args >>= return . foldl1 go
+        P.ApplyBinding args _an -> mapM compactArgument args >>= return . foldl1 go
             where
                 go :: ArgumentSpan -> ArgumentSpan -> ArgumentSpan
                 go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
