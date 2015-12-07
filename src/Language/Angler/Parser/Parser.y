@@ -425,8 +425,8 @@ Body :: { BodySpan }
                 Term(expid) :: { ExpressionSpan }
                     : expid         { Var ($1^.idn_str) ($1^.idn_annot) }
                     | Literal       { Lit $1 ($1^.lit_annot) }
-                    | '{' ListSep1(ImplicitBinding, ',') '}'
-                                    { ImplicitExpr $2 (srcSpanSpan $1 $3) }
+                --     | '{' ListSep1(ImplicitBinding, ',') '}'
+                --                     { ImplicitExpr $2 (srcSpanSpan $1 $3) }
                     | '(' Expression ')'
                                     { $2 & exp_annot .~ srcSpanSpan $1 $3 }
 

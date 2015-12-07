@@ -212,11 +212,12 @@ compactExpression = bracketSc . processExpression
                         return (Implicit scope an)
                     where
                         compactImplicits :: P.ImplicitBindingSpan -> Compact ()
-                        compactImplicits (P.ImplicitBind idn x spn) = do
-                                let str = view idn_str idn
-                                x' <- compactExpression x
-                                let sym = SymbolVar str Nothing (Just x') False
-                                insertAndHandleSc str sym spn
+                        compactImplicits _ = error "implicit apply not supported"
+                        -- compactImplicits (P.ImplicitBind idn x spn) = do
+                                -- let str = view idn_str idn
+                                -- x' <- compactExpression x
+                                -- let sym = SymbolVar str Nothing (Just x') False
+                                -- insertAndHandleSc str sym spn
 
 compactTypeBind :: P.TypeBindSpan -> Compact SymbolSpan
 compactTypeBind (P.TypeBind idn typ an) = do
