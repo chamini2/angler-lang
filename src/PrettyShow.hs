@@ -14,6 +14,7 @@ import           Control.Lens
 import           Control.Monad.State     (State, execState)
 
 import           Data.Foldable           (toList)
+import           Data.List               (intersperse)
 
 type Indentation = Int
 type PrettyShowed = State PrettyShowState ()
@@ -49,9 +50,12 @@ runPrettyShowIndent :: Indentation      -- starting indentation level
 runPrettyShowIndent n str = views ps_lines showLines . flip execState initialST
     where
         showLines :: [(Indentation, String)] -> String
-        showLines = concatMap (\(ind, s) -> tabs ind ++ s ++ "\n") . reverse
-        tabs :: Indentation -> String
-        tabs ind = concat (replicate ind str)
+        showLines = concat . intersperse "\n" . fmap indent . reverse
+            where
+                indent :: (Indentation, String) -> String
+                indent (ind, str) = tabs ind ++ str
+                tabs :: Indentation -> String
+                tabs ind = concat (replicate ind str)
         initialST :: PrettyShowState
         initialST = PrettyShowState
                 { _ps_level = n

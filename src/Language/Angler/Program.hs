@@ -275,8 +275,9 @@ instance PrettyShow (Module a) where
                         string "export (" >> string (showExports exprts) >> string ")"
                         line >> line
 
-                pshows line imprts
-                line >> line
+                when (length imprts > 0) $ do
+                        pshows line imprts
+                        line >> line
                 pshow bdy
             where
                 showExports :: Traversable f => f (Identifier a) -> String
