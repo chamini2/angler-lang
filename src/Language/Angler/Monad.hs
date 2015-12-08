@@ -10,7 +10,7 @@ module Language.Angler.Monad
     , warn
 
     , STErrors(..)
-    , addError
+    , addError, addLErr, addPErr, addCErr
 
     , throwError
 
@@ -62,8 +62,17 @@ warn w = st_warnings %= (|> w)
 class STErrors st where
         st_errors :: Lens' st [Located Error]
 
-addError :: (STErrors s, MonadState s m) => Located Error -> m ()
-addError e = st_errors %= (|> e)
+addError :: (STErrors s, MonadState s m) => Error -> SrcSpan -> m ()
+addError e s = st_errors %= (|> Loc s e)
+
+addLErr :: (STErrors s, MonadState s m) => LexError -> SrcSpan -> m ()
+addLErr = addError . LexError
+
+addPErr :: (STErrors s, MonadState s m) => ParseError -> SrcSpan -> m ()
+addPErr = addError . ParseError
+
+addCErr :: (STErrors s, MonadState s m) => CheckError -> SrcSpan -> m ()
+addCErr = addError . CheckError
 
 --------------------------------------------------------------------------------
 
@@ -77,8 +86,7 @@ lookupAndHandleSc :: (STScopedTable s sym, MonadState s m, STErrors s)
                   => String -> SrcSpan -> m (Maybe sym)
 lookupAndHandleSc str spn = do
         msym <- lookupSc str
-        when (isNothing msym)
-                ((addError . Loc spn . CheckError . CErrNotInSymbolTable) str)
+        when (isNothing msym) $ addCErr (CErrNotInSymbolTable str) spn
         return msym
 
 insertSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m (Maybe Error)
@@ -94,7 +102,7 @@ insertAndHandleSc str sym spn = do
         merr <- insertSc str sym
         when (isJust merr) $ do
                 let Just err = merr
-                addError (Loc spn err)
+                addError err spn
 
 replaceSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m ()
 replaceSc str sym = st_table %= (insert str sym)

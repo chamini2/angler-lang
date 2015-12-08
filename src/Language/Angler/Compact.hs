@@ -29,9 +29,6 @@ import           Prelude                     hiding (drop)
 --------------------------------------------------------------------------------
 -- Compact monad
 
-addCError :: CheckError -> SrcSpan -> Compact ()
-addCError cerr spn = addError (Loc spn (CheckError cerr))
-
 type Compact = State CompactState
 
 data CompactState
@@ -73,8 +70,6 @@ instance Default CompactState where
                         arrTyp = arrExpr typeType (arrExpr typeType typeType)
                         arrExpr :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
                         arrExpr f t = Arrow f t SrcSpanNoInfo
-                typeType :: TypeSpan
-                typeType = TypeType SrcSpanNoInfo
 
 compactAST :: P.ModuleSpan -> Either [Located Error] (SymbolTableSpan, [Located Warning])
 compactAST = handleEither . snd . flip runCompact def . compactModule
@@ -112,7 +107,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                                 let Just sym = msym
                                 if isSymType sym && (sym^?!sym_open)
                                         then mapM_ (compactConstructor (view sym_idn sym)) cns
-                                        else addCError (CErrExpectingInsteadOf "open type" (symbolStr sym)) an
+                                        else addCErr (CErrExpectingInsteadOf "open type" (symbolStr sym)) an
 
                 P.ClosedType idn typ cns an -> do
                         let str = view idn_str idn
@@ -139,7 +134,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                                     sym' = over sym_defs (|> (args', defn')) sym
                                 if isSymFunction sym
                                         then replaceSc str sym'
-                                        else addCError (CErrExpectingInsteadOf "function" (symbolStr sym)) an
+                                        else addCErr (CErrExpectingInsteadOf "function" (symbolStr sym)) an
                     where
                         compactFunctionArgument :: P.ArgumentSpan -> Compact (Seq ArgumentSpan)
                         compactFunctionArgument arg' = case arg' of
@@ -163,6 +158,8 @@ compactExpression = bracketSc . processExpression
     where
         processExpression :: P.ExpressionSpan -> Compact ExpressionSpan
         processExpression expr = case expr of
+                P.Var "Type" an -> return (TypeType an)
+
                 P.Var str an -> lookupAndHandleSc str an >> return (Var str an)
 
                 P.Lit lit an -> return (Lit lit an)
@@ -223,7 +220,7 @@ compactTypeBind :: P.TypeBindSpan -> Compact SymbolSpan
 compactTypeBind (P.TypeBind idn typ an) = do
         let str = view idn_str idn
         typ' <- compactExprWhere typ
-        let sym = SymbolVar str (Just typ') Nothing True
+        let sym = SymbolVar str typ' Nothing True
         insertAndHandleSc str sym an
         return sym
 
@@ -231,9 +228,8 @@ compactArgument :: P.ArgumentSpan -> Compact ArgumentSpan
 compactArgument arg' = case arg' of
         P.DontCare an -> return (DontCare an)
         P.VarBinding str an -> do
-                let sym = SymbolVar str Nothing Nothing True
-                msym <- lookupSc str
-                when (isNothing msym) $ void (insertSc str sym)
+                let sym = SymbolVar str dontCare Nothing True
+                insertSc str sym
                 return (Var str an)
         P.ApplyBinding args _an -> mapM compactArgument args >>= return . foldl1 go
             where
