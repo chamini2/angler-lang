@@ -1,6 +1,17 @@
-module Language.Angler.AST where
+module Language.Angler.AST
+        ( module Language.Angler.AST
+        -- Program
+        , Identifier(..), IdentifierSpan, idn_str, idn_annot
+        , Literal(..), LiteralSpan, lit_int, lit_char, lit_str, lit_annot
+        , Fixity(..), FixitySpan, fix_assoc, fix_prec, fix_annot
+        , Associativity(..)
+        )
+        where
 
-import qualified Language.Angler.Program     as Program
+import           Language.Angler.Program     ( Identifier(..), IdentifierSpan, idn_str, idn_annot
+                                             , Literal(..), LiteralSpan, lit_int, lit_char, lit_str, lit_annot
+                                             , Fixity(..), FixitySpan, fix_assoc, fix_prec, fix_annot
+                                             , Associativity(..) )
 import           Language.Angler.SrcLoc
 import           Language.Angler.ScopedTable
 
@@ -14,13 +25,6 @@ import           Data.Sequence               (Seq)
 
 --------------------------------------------------------------------------------
 -- abstract syntax tree
-
-type Identifier = Program.Identifier
-type IdentifierSpan = Identifier SrcSpan
-idn_str :: Lens' (Identifier a) String
-idn_str = Program.idn_str
-idn_annot :: Lens' (Identifier a) a
-idn_annot = Program.idn_annot
 
 data Expression a
   = Var
@@ -38,6 +42,7 @@ data Expression a
         }
   | Lambda
         { _lam_arg      :: Argument a
+        -- , _lam_arg_type :: Type a
         , _lam_expr     :: Expression a
         , _exp_annot    :: a
         }
@@ -82,6 +87,12 @@ data Expression a
   deriving Show
 type ExpressionSpan = Expression SrcSpan
 
+typeType :: ExpressionSpan
+typeType = TypeType SrcSpanNoInfo
+
+dontCare :: ExpressionSpan
+dontCare = DontCare SrcSpanNoInfo
+
 type Type           = Expression
 type TypeSpan       = Expression SrcSpan
 
@@ -106,20 +117,6 @@ data TypeBind a
   deriving Show
 type TypeBindSpan = TypeBind SrcSpan
 
-type Associativity = Program.Associativity
-
-type Fixity = Program.Fixity
-type FixitySpan = Fixity SrcSpan
-fix_assoc :: Traversal' (Fixity a) Associativity
-fix_assoc = Program.fix_assoc
-fix_prec :: Traversal' (Fixity a) Int
-fix_prec = Program.fix_prec
-fix_annot :: Lens' (Fixity a) a
-fix_annot = Program.fix_annot
-
-type Literal = Program.Literal
-type LiteralSpan = Literal SrcSpan
-
 --------------------------------------------------------------------------------
 -- symbol table
 
@@ -140,7 +137,7 @@ data Symbol a
         }
   | SymbolVar
         { _sym_idn      :: String
-        , _sym_may_type :: Maybe (Type a)
+        , _sym_type     :: Type a
         , _sym_may_val  :: Maybe (Expression a)
         , _sym_free     :: Bool
         }
@@ -252,16 +249,12 @@ instance PrettyShow (Symbol a) where
                         string " "
                         string str >> string " : " >> pshow typ
 
-                SymbolVar str mtyp mval _ -> do
-                        string "("
-                        string str
-                        when (isJust mtyp) $ do
-                                let Just typ = mtyp
-                                string " : " >> pshow typ
+                SymbolVar str typ mval _ -> do
+                        string str >> string " : " >> pshow typ
                         when (isJust mval) $ do
                                 let Just val = mval
-                                string " = " >> pshow val
-                        string ")"
+                                line
+                                string str >> string " = " >> pshow val
 
                 SymbolOperator str fix ->
                         string "operator " >> string str >> string " " >> pshow fix
