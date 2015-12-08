@@ -45,6 +45,12 @@ locationSeparator strs = intercalate ":" strs ++ ":"
 instance Show SrcLoc where
         show (SrcLoc f l c) = locationSeparator (f : fmap show [l, c])
 
+instance Eq SrcLoc where
+        (SrcLoc fa la ca) == (SrcLoc fb lb cb) = (fa == fb) && (la == lb) && (ca == cb)
+
+instance Ord SrcLoc where
+        (SrcLoc fa la ca) <= (SrcLoc fb lb cb) = (fa <= fb) || (la <= lb) || (ca <= cb)
+
 startLoc :: FilePath -> SrcLoc
 startLoc f = SrcLoc f 1 1
 
@@ -119,6 +125,19 @@ instance Show SrcSpan where
                 SrcSpanOneLine f l c1 c2       -> locationSeparator (f : fmap show [(l, c1), (l, c2)])
                 SrcSpanMultiline f l1 c1 l2 c2 -> locationSeparator (f : fmap show [(l1, c1), (l2, c2)])
 
+instance Eq SrcSpan where
+        a == b = case (a,b) of
+                (SrcSpanNoInfo, SrcSpanNoInfo) -> True
+                (SrcSpanNoInfo, _) -> False
+                (_, SrcSpanNoInfo) -> False
+                _ -> srcSpanSLoc a == srcSpanSLoc b && srcSpanELoc a == srcSpanELoc b
+
+instance Ord SrcSpan where
+        a <= b = case (a,b) of
+                (SrcSpanNoInfo, _) -> True
+                (_, SrcSpanNoInfo) -> False
+                _ -> srcSpanSLoc a <= srcSpanSLoc b
+
 srcSpanSLoc :: SrcSpan -> SrcLoc
 srcSpanSLoc span = case span of
         SrcSpanNoInfo                    -> error "SrcLoc.srcSpanSLoc: SrcSpanNoInfo"
@@ -184,6 +203,7 @@ data Located e
         { _loc_span :: SrcSpan
         , _loc_insd :: e
         }
+  deriving Eq
 
 makeLenses ''Located
 
