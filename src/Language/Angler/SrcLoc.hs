@@ -221,7 +221,14 @@ srcSpanSpan :: SrcSpan -> SrcSpan -> SrcSpan
 srcSpanSpan s e = case (s,e) of
         (SrcSpanNoInfo, _            ) -> e
         (_            , SrcSpanNoInfo) -> s
-        _                              -> srcLocSpan (srcSpanSLoc s) (srcSpanELoc e)
+        _                              -> srcLocSpan startLoc endLoc
+    where
+        startLoc :: SrcLoc
+        startLoc = minimum (fmap srcSpanSLoc both)
+        endLoc :: SrcLoc
+        endLoc = maximum (fmap srcSpanELoc both)
+        both :: [SrcSpan]
+        both = [s,e]
 
 srcLocatedSpan :: Located a -> Located b -> SrcSpan
 srcLocatedSpan (Loc s _) (Loc e _) = srcSpanSpan s e
