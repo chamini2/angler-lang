@@ -1,19 +1,19 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 
 module Language.Angler.ScopedTable
-        ( ScopedTable
+        ( ScopedTable, Scope
         , tab_stack
 
         -- basic
-        , empty
+        , empty, emptyScope
         , lookup , elem, elemInCurrentScope
         , insertWith, safeInsert, insert
 
         -- scope handling
-        , enterScope, exitScope
+        , enterScopeWith, enterScope
+        , topScope, exitScope
 
         , toList
-        , topScope
         , fromFoldable, safeFromFoldable
 
         -- on keys
@@ -33,12 +33,12 @@ import qualified Data.Map.Strict            as Map
 import           Prelude                    hiding (elem, lookup)
 import qualified Prelude                    as P (elem)
 
-type Table sym = Map.Map String sym
+type Scope sym = Map.Map String sym
 
 -- interface for a scoped symbol table
 newtype ScopedTable sym
   = ScopedTable
-        { _tab_stack    :: [ Table sym ] }
+        { _tab_stack    :: [ Scope sym ] }
   deriving (Show, Functor, Foldable, Traversable)
 
 makeLenses ''ScopedTable
@@ -46,8 +46,17 @@ makeLenses ''ScopedTable
 empty :: ScopedTable sym
 empty = ScopedTable [Map.empty]
 
+emptyScope :: Scope sym
+emptyScope = Map.empty
+
+enterScopeWith :: Scope sym -> ScopedTable sym -> ScopedTable sym
+enterScopeWith up = over tab_stack (cons up)
+
 enterScope :: ScopedTable sym -> ScopedTable sym
-enterScope = over tab_stack (cons Map.empty)
+enterScope = enterScopeWith emptyScope
+
+topScope :: ScopedTable sym -> Scope sym
+topScope = views tab_stack head
 
 exitScope :: ScopedTable sym -> ScopedTable sym
 exitScope = over tab_stack tail
@@ -78,9 +87,6 @@ toList = views tab_stack (proccess . concatMap Map.toList)
     where
         proccess :: [(String, sym)] -> [(String, sym)]
         proccess = Map.toList . foldr (uncurry Map.insert) Map.empty
-
-topScope :: ScopedTable sym -> ScopedTable sym
-topScope = over tab_stack (pure . head)
 
 fromFoldable :: Foldable f => f (String, sym) -> ScopedTable sym
 fromFoldable = foldl (flip (uncurry insert)) empty

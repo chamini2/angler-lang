@@ -15,13 +15,13 @@ import           Control.Applicative         (empty)
 
 import           Control.Lens
 
-import           Control.Monad               (void, when)
+import           Control.Monad               (when)
 import           Control.Monad.State         (State, runState)
 
 import           Data.Default                (Default(..))
 import           Data.Foldable               (toList)
 import           Data.Function               (on)
-import           Data.Maybe                  (isJust, isNothing, fromMaybe)
+import           Data.Maybe                  (isJust, fromMaybe)
 import           Data.Sequence               (Seq, drop)
 
 import           Prelude                     hiding (drop)
@@ -194,10 +194,9 @@ compactExpression = bracketSc . processExpression
                         return (Forall scope x' an)
 
                 P.Exists typ x an -> bracketSc $ do
-                        _ <- compactTypeBind typ
+                        sym <- compactTypeBind typ
                         x' <- processExpression x
-                        scope <- topSc
-                        return (Exists scope x' an)
+                        return (Exists sym x' an)
 
                 P.Select typ an -> do
                         sym <- compactTypeBind typ
@@ -229,7 +228,7 @@ compactArgument arg' = case arg' of
         P.DontCare an -> return (DontCare an)
         P.VarBinding str an -> do
                 let sym = SymbolVar str dontCare Nothing True
-                insertSc str sym
+                _ <- insertSc str sym
                 return (Var str an)
         P.ApplyBinding args _an -> mapM compactArgument args >>= return . foldl1 go
             where

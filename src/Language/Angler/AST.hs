@@ -13,13 +13,14 @@ import           Language.Angler.Program     ( Identifier(..), IdentifierSpan, i
                                              , Fixity(..), FixitySpan, fix_assoc, fix_prec, fix_annot
                                              , Associativity(..) )
 import           Language.Angler.SrcLoc
-import           Language.Angler.ScopedTable
+import           Language.Angler.ScopedTable hiding (toList)
 
 import           PrettyShow
 
 import           Control.Lens
 import           Control.Monad               (when)
 
+import           Data.Foldable               (toList)
 import           Data.Maybe                  (isJust)
 import           Data.Sequence               (Seq)
 
@@ -47,17 +48,17 @@ data Expression a
         , _exp_annot    :: a
         }
   | Let
-        { _let_tab      :: SymbolTable a
+        { _let_tab      :: SymbolScope a
         , _let_expr     :: Expression a
         , _exp_annot    :: a
         }
   | Forall
-        { _fall_typs    :: SymbolTable a
+        { _fall_typs    :: SymbolScope a
         , _fall_over    :: Expression a
         , _exp_annot    :: a
         }
   | Exists
-        { _exst_typs    :: SymbolTable a
+        { _exst_typ     :: Symbol a
         , _exst_over    :: Expression a
         , _exp_annot    :: a
         }
@@ -66,7 +67,7 @@ data Expression a
         , _exp_annot    :: a
         }
   | Implicit
-        { _impl_exprs   :: SymbolTable a
+        { _impl_exprs   :: SymbolScope a
         , _exp_annot    :: a
         }
   -- | CaseOf
@@ -120,6 +121,7 @@ type TypeBindSpan = TypeBind SrcSpan
 --------------------------------------------------------------------------------
 -- symbol table
 
+type SymbolScope a = Scope (Symbol a)
 type SymbolTable a = ScopedTable (Symbol a)
 type SymbolTableSpan = SymbolTable SrcSpan
 
@@ -207,14 +209,14 @@ instance PrettyShow (Expression a) where
                                         string "let"
 
                                         raise >> line
-                                        pshow bdy
+                                        pshows line (toList bdy)
                                         lower >> line >> lower
 
                                         string "in "
                                         pshow x
                                 Forall typs x _ -> do
                                         string "forall "
-                                        pshows (string ", ") (snd <$> toList typs)
+                                        pshows (string ", ") (toList typs)
                                         string " . "
                                         pshow x
                                 Exists typ x _ -> do
@@ -222,7 +224,7 @@ instance PrettyShow (Expression a) where
                                         string " . " >> pshow x
                                 Select typ _ -> string "select " >> pshow typ
                                 Implicit ims _ ->
-                                        string "{" >> pshows (string ", ") (snd <$> toList ims) >> string "}"
+                                        string "{" >> pshows (string ", ") (toList ims) >> string "}"
                                 DontCare _ -> string "_"
                                 Arrow f t _ -> pshow f >> string " -> " >> pshow t
                                 TypeType _ -> string "Type"
