@@ -364,8 +364,10 @@ Body :: { BodySpan }
 
             ExpressionList_(expid) :: { Seq ExpressionSpan }
                 : '\ ' List1(Argument_(LambdaId)) '->' Expression_(expid)
-                                { let s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
-                                  in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
+                                {% throwPError (PErr "λ-function not supported")
+                                        (srcSpanSpan $1 ($4^.exp_annot)) }
+                                -- { let s a e = srcSpanSpan (a^.arg_annot) (e^.exp_annot)
+                                --   in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
                 | 'let' '{^' Body CloseBrace 'in' Expression_(expid)
                                 { pure $ Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
                 | 'forall' ListSep1(TypeBind_(QuantifierId), ',') '.' Expression_(expid)
@@ -425,8 +427,10 @@ Body :: { BodySpan }
                 Term(expid) :: { ExpressionSpan }
                     : expid         { Var ($1^.idn_str) ($1^.idn_annot) }
                     | Literal       { Lit $1 ($1^.lit_annot) }
-                --     | '{' ListSep1(ImplicitBinding, ',') '}'
-                --                     { ImplicitExpr $2 (srcSpanSpan $1 $3) }
+                    | '{' ListSep1(ImplicitBinding, ',') '}'
+                                    {% throwPError (PErr "implicit apply not supported")
+                                                (srcSpanSpan $1 $3) }
+                                --     { ImplicitExpr $2 (srcSpanSpan $1 $3) }
                     | '(' Expression ')'
                                     { $2 & exp_annot .~ srcSpanSpan $1 $3 }
 
