@@ -59,9 +59,9 @@ $escape_chars = [ a b f n r t v \\ \' \" ]                              -- "
 ----------------------------------------
 -- regex
 
-@int          = $digit+
+@num          = $digit+
 @hex          = 0 x $hexdigit+
-@float        = @int \. @int
+@float        = @num \. @num
 
 @char         = \' ($printable # [\\ \'] | \\ $escape_chars)  \'
 @string       = \" ($printable # [\\ \"] | \\ $escape_chars)* \"        -- "
@@ -116,9 +116,9 @@ $white_no_nl+   ;
         @ident  { identifier (fixity TkIdentifier) }
         @qualf  { identifier TkQualified  }
 
-        @int    { tokenStore (TkInteger . read) }
-        @char   { tokenStore (TkChar    . read) }
-        @string { tokenStore (TkString  . read) }
+        @num    { tokenStore (TkNumber . read) }
+        @char   { tokenStore (TkChar   . read) }
+        @string { tokenStore (TkString . read) }
 
         \,      { token TkComma     }
         -- \@      { token TkAt        }

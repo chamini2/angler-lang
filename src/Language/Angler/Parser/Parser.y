@@ -36,9 +36,9 @@ import           Data.Maybe                   (isJust, fromJust)
         ident                   { Loc _ (TkIdentifier _ _) }
         qualf                   { Loc _ (TkQualified  _) }
 
-        int                     { Loc _ (TkInteger _)    }
-        chr                     { Loc _ (TkChar    _)    }
-        str                     { Loc _ (TkString  _)    }
+        int                     { Loc _ (TkNumber _)     }
+        chr                     { Loc _ (TkChar   _)     }
+        str                     { Loc _ (TkString _)     }
 
         '{^'                    { Loc $$ TkVLCurly       }
         '^}'                    { Loc $$ TkVRCurly       }
@@ -302,8 +302,8 @@ Body :: { BodySpan }
 
         OperatorDefPrec(fixity) :: { Tok.Fixity -> (Int -> SrcSpan -> FixitySpan) ->
                                  Either (ParseError, SrcSpan) BodyStmtSpan }
-           : OperatorDef(fixity) LitInt
-                            { \tokFix fix -> $1 tokFix (fix ($2^?!lit_int)) }
+           : OperatorDef(fixity) LitNat
+                            { \tokFix fix -> $1 tokFix (fix ($2^?!lit_nat)) }
 
         Argument(argid) :: { ArgumentSpan }
             : List1(Argument_(argid))
@@ -410,7 +410,7 @@ Body :: { BodySpan }
                                         (srcSpanSpan $1 $3) }
                 | 'select' Expression_(expid)
                                 {% throwPError (PErrNoIn "binding identifier" "select")
-                                        (srcSpanSpan $1 ($2^.exp_annot))}
+                                        (srcSpanSpan $1 ($2^.exp_annot)) }
 
                 LambdaId :: { IdentifierSpan }
                     : QId           { $1 }
@@ -431,12 +431,12 @@ Body :: { BodySpan }
                                     { $2 & exp_annot .~ srcSpanSpan $1 $3 }
 
                     Literal :: { LiteralSpan }
-                        : LitInt        { $1 }
+                        : LitNat        { $1 }
                         | LitChar       { $1 }
                         | LitString     { $1 }
 
-                    LitInt :: { LiteralSpan }
-                        : int           { LitInt    ($1^.loc_insd.to tkInt)
+                    LitNat :: { LiteralSpan }
+                        : int           { LitNat    ($1^.loc_insd.to tkNum)
                                             ($1^.loc_span) }
 
                     LitChar :: { LiteralSpan }

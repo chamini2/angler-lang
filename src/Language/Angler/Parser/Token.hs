@@ -28,7 +28,7 @@ data Token
   | TkBlockComment      String
 
   -- literals
-  | TkInteger           { tkInt    :: Int    }
+  | TkNumber            { tkNum    :: Int    }
   | TkChar              { tkChar   :: Char   }
   | TkString            { tkString :: String }
 
@@ -86,9 +86,9 @@ instance Show Token where
                 TkLineComment str  -> "--" ++ str
                 TkBlockComment str -> "{-" ++ str ++ "-}"
 
-                TkInteger int      -> show int
-                TkChar    chr      -> show chr
-                TkString  str      -> show str
+                TkNumber num       -> show num
+                TkChar   chr       -> show chr
+                TkString str       -> show str
 
                 TkVLCurly          -> "{^"
                 TkVRCurly          -> "^}"

@@ -2,14 +2,14 @@ module Language.Angler.AST
         ( module Language.Angler.AST
         -- Program
         , Identifier(..), IdentifierSpan, idn_str, idn_annot
-        , Literal(..), LiteralSpan, lit_int, lit_char, lit_str, lit_annot
+        , Literal(..), LiteralSpan, lit_nat, lit_char, lit_str, lit_annot
         , Fixity(..), FixitySpan, fix_assoc, fix_prec, fix_annot
         , Associativity(..)
         )
         where
 
 import           Language.Angler.Program     ( Identifier(..), IdentifierSpan, idn_str, idn_annot
-                                             , Literal(..), LiteralSpan, lit_int, lit_char, lit_str, lit_annot
+                                             , Literal(..), LiteralSpan, lit_nat, lit_char, lit_str, lit_annot
                                              , Fixity(..), FixitySpan, fix_assoc, fix_prec, fix_annot
                                              , Associativity(..) )
 import           Language.Angler.SrcLoc

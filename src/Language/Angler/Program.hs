@@ -237,8 +237,8 @@ data ImplicitBinding a
 type ImplicitBindingSpan = ImplicitBinding SrcSpan
 
 data Literal a
-  = LitInt
-        { _lit_int      :: Int
+  = LitNat
+        { _lit_nat      :: Int
         , _lit_annot    :: a
         }
   | LitChar
@@ -431,6 +431,6 @@ instance PrettyShow (ImplicitBinding a) where
 
 instance PrettyShow (Literal a) where
         pshow lit = case lit of
-                LitInt int _    -> string (show int)
+                LitNat int _    -> string (show int)
                 LitChar chr _   -> string (show chr)
                 LitString str _ -> string (show str)
