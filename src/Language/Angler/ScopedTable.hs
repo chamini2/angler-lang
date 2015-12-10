@@ -5,7 +5,7 @@ module Language.Angler.ScopedTable
         , tab_stack
 
         -- basic
-        , empty, emptyScope
+        , emptyScope, emptyWithIndefinable, empty
         , lookup , elem, elemInCurrentScope
         , insertWith, safeInsert, insert
 
@@ -36,18 +36,23 @@ import qualified Prelude                    as P (elem)
 type Scope sym = Map.Map String sym
 
 -- interface for a scoped symbol table
-newtype ScopedTable sym
+data ScopedTable sym
   = ScopedTable
-        { _tab_stack    :: [ Scope sym ] }
+        { _tab_stack    :: [ Scope sym ]
+        , _indefinable  :: [ String ]
+        }
   deriving (Show, Functor, Foldable, Traversable)
 
 makeLenses ''ScopedTable
 
-empty :: ScopedTable sym
-empty = ScopedTable [Map.empty]
-
 emptyScope :: Scope sym
 emptyScope = Map.empty
+
+emptyWithIndefinable :: [String] -> ScopedTable sym
+emptyWithIndefinable = ScopedTable [emptyScope]
+
+empty :: ScopedTable sym
+empty = emptyWithIndefinable []
 
 enterScopeWith :: Scope sym -> ScopedTable sym -> ScopedTable sym
 enterScopeWith up = over tab_stack (cons up)
@@ -74,7 +79,7 @@ insertWith :: (sym -> sym -> sym) -> String -> sym -> ScopedTable sym -> ScopedT
 insertWith join str sym = over (tab_stack._head) (Map.insertWith join str sym)
 
 safeInsert :: String -> sym -> ScopedTable sym -> Either Error (ScopedTable sym)
-safeInsert str sym tab = if elemInCurrentScope str tab
+safeInsert str sym tab = if P.elem str (view indefinable tab) || elemInCurrentScope str tab
         then (Left . CheckError . CErrAlreadyInSymbolTable) str
         else Right (insert str sym tab)
 
@@ -86,7 +91,7 @@ toList :: ScopedTable sym -> [(String, sym)]
 toList = views tab_stack (proccess . concatMap Map.toList)
     where
         proccess :: [(String, sym)] -> [(String, sym)]
-        proccess = Map.toList . foldr (uncurry Map.insert) Map.empty
+        proccess = Map.toList . foldr (uncurry Map.insert) emptyScope
 
 fromFoldable :: Foldable f => f (String, sym) -> ScopedTable sym
 fromFoldable = foldl (flip (uncurry insert)) empty

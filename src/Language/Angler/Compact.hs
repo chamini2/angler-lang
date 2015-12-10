@@ -51,7 +51,7 @@ instance STScopedTable CompactState SymbolSpan where
 
 instance Default CompactState where
         def = CompactState
-                { _cm_table    = ST.fromFoldable [typeSym, arrowSym]
+                { _cm_table    = ST.emptyWithIndefinable ["Type", "_->_"]
                 , _cm_warnings = []
                 , _cm_errors   = []
                 }
