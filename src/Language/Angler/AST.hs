@@ -21,6 +21,7 @@ import           Control.Lens
 import           Control.Monad               (when)
 
 import           Data.Foldable               (toList)
+import           Data.Function               (on)
 import           Data.Maybe                  (isJust)
 import           Data.Sequence               (Seq)
 
@@ -137,15 +138,16 @@ data Symbol a
         , _sym_type     :: Type a
         , _sym_open     :: Bool
         }
+  -- | SymbolOperator
+  --       { _sym_idn      :: String
+  --       , _sym_fix      :: Fixity a
+  --       }
   | SymbolVar
         { _sym_idn      :: String
         , _sym_type     :: Type a
-        , _sym_may_val  :: Maybe (Expression a)
+        , _sym_value    :: Maybe (Expression a)
         , _sym_free     :: Bool
-        }
-  | SymbolOperator
-        { _sym_idn      :: String
-        , _sym_fix      :: Fixity a
+        , _sym_parent   :: Symbol a
         }
   deriving Show
 type SymbolSpan = Symbol SrcSpan
@@ -153,6 +155,29 @@ type SymbolSpan = Symbol SrcSpan
 makeLenses ''Expression
 makeLenses ''TypeBind
 makeLenses ''Symbol
+
+instance Eq (Symbol a) where
+        (==) = (==) `on` view sym_idn
+
+----------------------------------------
+-- disjoint sets
+
+symFind :: Symbol a -> Symbol a
+symFind sym = case sym of
+        SymbolFunction {} -> sym
+        SymbolType {}     -> sym
+        -- SymbolOperator {} -> sym
+        SymbolVar {}      -> let p = sym ^?! sym_parent
+                             in if p == sym then sym else symFind p
+
+symUnion :: Symbol a -> Symbol a -> Maybe (Symbol a, Symbol a)
+symUnion a b = case (symFind a, symFind b) of
+        (pa@(SymbolVar {}), pb) -> Just (set sym_parent pb pa, pb)
+        (pa, pb@(SymbolVar {})) -> Just (pa, set sym_parent pa pb)
+        (pa, pb) | pa == pb     -> Just (pa, pb)
+        _ -> Nothing
+
+----------------------------------------
 
 isSymFunction :: Symbol a -> Bool
 isSymFunction sym = case sym of
@@ -164,22 +189,22 @@ isSymType sym = case sym of
         SymbolType {} -> True
         _             -> False
 
+-- isSymOperator :: Symbol a -> Bool
+-- isSymOperator sym = case sym of
+--         SymbolOperator {} -> True
+--         _                 -> False
+
 isSymVar :: Symbol a -> Bool
 isSymVar sym = case sym of
         SymbolVar {} -> True
         _            -> False
 
-isSymOperator :: Symbol a -> Bool
-isSymOperator sym = case sym of
-        SymbolOperator {} -> True
-        _                 -> False
-
 symbolStr :: Symbol a -> String
 symbolStr sym = case sym of
-        SymbolFunction {}    -> "function"
-        SymbolType {}        -> (if sym^?!sym_open then "open" else "closed") ++ " type"
-        SymbolVar {}         -> "var"
-        SymbolOperator {}    -> "operator"
+        SymbolFunction {} -> "function"
+        SymbolType {}     -> (if sym^?!sym_open then "open" else "closed") ++ " type"
+        -- SymbolOperator {} -> "operator"
+        SymbolVar {}      -> "var"
 
 --------------------------------------------------------------------------------
 -- PrettyShow
@@ -233,7 +258,7 @@ instance PrettyShow (TypeBind a) where
         pshow (TypeBind name expr _) = string name >> string " : " >> pshow expr
 
 instance PrettyShow (Symbol a) where
-        pshow sym = case sym of
+        pshow sym = case symFind sym of
                 SymbolFunction str typ defs -> do
                         string str >> string " : " >> pshow typ
                         raise >> pshows' defs >> lower
@@ -251,12 +276,12 @@ instance PrettyShow (Symbol a) where
                         string " "
                         string str >> string " : " >> pshow typ
 
-                SymbolVar str typ mval _ -> do
+                -- SymbolOperator str fix ->
+                --         string "operator " >> string str >> string " " >> pshow fix
+
+                SymbolVar str typ mval _ _ -> do
                         string str >> string " : " >> pshow typ
                         when (isJust mval) $ do
                                 let Just val = mval
                                 line
                                 string str >> string " = " >> pshow val
-
-                SymbolOperator str fix ->
-                        string "operator " >> string str >> string " " >> pshow fix
