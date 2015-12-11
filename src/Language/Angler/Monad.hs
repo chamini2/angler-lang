@@ -83,11 +83,19 @@ lookupSc :: (STScopedTable s sym, MonadState s m) => String -> m (Maybe sym)
 lookupSc = uses st_table . lookup
 
 lookupAndHandleSc :: (STScopedTable s sym, MonadState s m, STErrors s)
-                  => String -> SrcSpan -> m (Maybe sym)
-lookupAndHandleSc str spn = do
-        msym <- lookupSc str
-        when (isNothing msym) $ addCErr (CErrNotInSymbolTable str) spn
-        return msym
+                  => (String, sym -> Bool, sym -> String, SrcSpan) -> String -> m (Maybe sym)
+lookupAndHandleSc (expc, g, sStr, spn) str = do
+        mSym <- lookupSc str
+        case mSym of
+                Nothing -> do
+                        addCErr (CErrNotInSymbolTable str) spn
+                        return Nothing
+
+                Just s | g s -> return (Just s)
+
+                Just s -> do
+                        addCErr (CErrExpectingInsteadOf expc (sStr s)) spn
+                        return Nothing
 
 insertSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m (Maybe Error)
 insertSc str sym = do

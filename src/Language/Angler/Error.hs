@@ -91,15 +91,28 @@ data CheckError
   -- compact
   | CErrExpectingInsteadOf      String String
 
+  -- typecheck
+  | CErrTooManyArguments        String
+  | CErrCouldNotInferType
+  | CErrCannotApply             String String
+  | CErrTypeError               String String
+
 instance Show CheckError where
         show ce = case ce of
                 CErr                     str -> str
-                CErrAlreadyInSymbolTable idn -> "identifier '" ++ idn ++ "' has already been declared at this scope"
-                CErrNotInSymbolTable     idn -> "identifier '" ++ idn ++ "' is not in the symbol table"
-                CErrExpected              tk -> "in mixfix parser, expected " ++ tk
-                CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ tk
-                CErrExpectingInsteadOf   e f -> "expecting " ++ e ++ " instead of " ++ f
-
+                -- symbol table
+                CErrAlreadyInSymbolTable idn -> "identifier " ++ ticks idn ++ " has already been declared at this scope"
+                CErrNotInSymbolTable     idn -> "identifier " ++ ticks idn ++ " is not in the symbol table"
+                -- mixfix parser
+                CErrExpected              tk -> "in mixfix parser, expected " ++ ticks tk
+                CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ ticks tk
+                -- compact
+                CErrExpectingInsteadOf   e f -> "expecting " ++ ticks e ++ " instead of " ++ ticks f
+                -- typecheck
+                CErrTooManyArguments       f -> "too many arguments for function " ++ ticks f
+                CErrCouldNotInferType        -> "could not infert type for expression"
+                CErrCannotApply          e f -> "cannot apply " ++ ticks e ++ " to " ++ ticks f
+                CErrTypeError            t u -> ticks t ++ " does not unify with " ++ ticks u
 
 instance PrettyShow CheckError where
         pshow = string . show
