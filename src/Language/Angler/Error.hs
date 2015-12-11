@@ -1,8 +1,18 @@
-module Language.Angler.Error where
+module Language.Angler.Error
+        ( Warning(..)
+        , Error(..)
+        , LexError(..)
+        , ParseError(..)
+        , CheckError(..)
+        , IOError(..)
+        ) where
 
 import           PrettyShow
 
 import           Prelude hiding (IOError)
+
+ticks :: String -> String
+ticks s = "`" ++ s ++ "`"
 
 data Warning
   = Warn                        String
@@ -39,7 +49,7 @@ data LexError
 instance Show LexError where
         show le = case le of
                 LErr                  str -> str
-                LErrUnexpectedCharacter c -> "unexpected character " ++ [c]
+                LErrUnexpectedCharacter c -> "unexpected character " ++ ticks [c]
                 LErrUnterminatedComment   -> "unterminated comment"
 
 instance PrettyShow LexError where
@@ -57,12 +67,12 @@ data ParseError
 instance Show ParseError where
         show pe = case pe of
                 PErr                str -> str
-                PErrUnexpectedToken  tk -> "unexpected token " ++ tk
-                PErrEmptyLayoutAfter  w -> "empty layout after " ++ w
-                PErrExpectingIn     e c -> "expected " ++ e ++ " in " ++ c
-                PErrExpectedAfter   e c -> "expected " ++ e ++ " after " ++ c
-                PErrUnexpectedAfter u c -> "unexpected " ++ u ++ " after " ++ c
-                PErrNoIn            e c -> "no " ++ e ++ " in " ++ c
+                PErrUnexpectedToken  tk -> "unexpected token " ++ ticks tk
+                PErrEmptyLayoutAfter  w -> "empty layout after " ++ ticks w
+                PErrExpectingIn     e c -> "expected " ++ ticks e ++ " in " ++ ticks c
+                PErrExpectedAfter   e c -> "expected " ++ ticks e ++ " after " ++ ticks c
+                PErrUnexpectedAfter u c -> "unexpected " ++ ticks u ++ " after " ++ ticks c
+                PErrNoIn            e c -> "no " ++ ticks e ++ " in " ++ ticks c
 
 instance PrettyShow ParseError where
         pshow = string . show
