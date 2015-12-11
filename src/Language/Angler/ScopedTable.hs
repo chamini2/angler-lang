@@ -7,7 +7,8 @@ module Language.Angler.ScopedTable
         -- basic
         , emptyScope, emptyWithIndefinable, empty
         , lookup , elem, elemInCurrentScope
-        , insertWith, safeInsert, insert
+        , insertWith, safeInsert
+        , adjust, replace
 
         -- scope handling
         , enterScopeWith, enterScope
@@ -69,11 +70,14 @@ exitScope = over tab_stack tail
 lookup :: String -> ScopedTable sym -> Maybe sym
 lookup str = views tab_stack (msum . fmap (Map.lookup str))
 
+scopeElem :: String -> Scope sym -> Bool
+scopeElem str = P.elem str . Map.keys
+
 elem :: String -> ScopedTable sym -> Bool
-elem str = views tab_stack (any (P.elem str . Map.keys))
+elem str = views tab_stack (any (scopeElem str))
 
 elemInCurrentScope :: String -> ScopedTable sym -> Bool
-elemInCurrentScope str = views tab_stack (P.elem str . Map.keys . head)
+elemInCurrentScope str = views tab_stack (scopeElem str . head)
 
 insertWith :: (sym -> sym -> sym) -> String -> sym -> ScopedTable sym -> ScopedTable sym
 insertWith join str sym = over (tab_stack._head) (Map.insertWith join str sym)
@@ -86,6 +90,20 @@ safeInsert str sym tab = if P.elem str (view indefinable tab) || elemInCurrentSc
 -- overwrites the symbol in the top scope
 insert :: String -> sym -> ScopedTable sym -> ScopedTable sym
 insert = insertWith const
+
+-- looks for the symbol and adjusts it in the appropiate scope
+adjust :: (sym -> sym) -> String -> ScopedTable sym  -> ScopedTable sym
+adjust f str = over tab_stack adjust'
+    where
+        -- adjust' :: [Scope sym] -> [Scope sym]
+        adjust' scopes = case scopes of
+                sc : scs -> if scopeElem str sc
+                        then Map.adjust f str sc : scs
+                        else sc : adjust' scs
+                []     -> []
+
+replace :: String -> sym -> ScopedTable sym -> ScopedTable sym
+replace str sym = adjust (const sym) str
 
 toList :: ScopedTable sym -> [(String, sym)]
 toList = views tab_stack (proccess . concatMap Map.toList)

@@ -105,7 +105,7 @@ insertAndHandleSc str sym spn = do
                 addError err spn
 
 replaceSc :: (STScopedTable s sym, MonadState s m) => String -> sym -> m ()
-replaceSc str sym = st_table %= insert str sym
+replaceSc str sym = st_table %= replace str sym
 
 enterScWith :: (STScopedTable s sym, MonadState s m) => Scope sym -> m ()
 enterScWith up = st_table %= enterScopeWith up
