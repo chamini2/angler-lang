@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Language.Angler.Compact
         ( compactAST ) where

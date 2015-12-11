@@ -1,7 +1,5 @@
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Language.Angler.MixfixParser

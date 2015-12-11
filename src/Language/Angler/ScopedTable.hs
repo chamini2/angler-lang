@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Language.Angler.ScopedTable
         ( ScopedTable, Scope
@@ -92,10 +93,10 @@ insert :: String -> sym -> ScopedTable sym -> ScopedTable sym
 insert = insertWith const
 
 -- looks for the symbol and adjusts it in the appropiate scope
-adjust :: (sym -> sym) -> String -> ScopedTable sym  -> ScopedTable sym
+adjust :: forall sym . (sym -> sym) -> String -> ScopedTable sym  -> ScopedTable sym
 adjust f str = over tab_stack adjust'
     where
-        -- adjust' :: [Scope sym] -> [Scope sym]
+        adjust' :: [Scope sym] -> [Scope sym]
         adjust' scopes = case scopes of
                 sc : scs -> if scopeElem str sc
                         then Map.adjust f str sc : scs
