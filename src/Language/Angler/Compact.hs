@@ -122,6 +122,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                 P.FunctionDecl idn typ an -> do
                         let str = view idn_str idn
                         (typ', typTyp) <- compactExprWhere typ
+                        unify an typTyp typeType
                         let sym = SymbolFunction str typ' empty
                         insertAndHandleSc str sym an
 
@@ -139,8 +140,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                                         unify an defnTyp (t fnTyp')
                                         return (args', defn')
 
-                                let sym' = over sym_defs (|> (args', defn')) sym
-                                replaceSc str sym'
+                                adjustSc str (over sym_defs (|> (args', defn')))
                     where
                         compactFunctionArgument :: String -> P.ArgumentSpan -> TypeSpan
                                                 -> Compact (Seq ArgumentSpan, TypeSpan)
@@ -213,36 +213,7 @@ compactExpression = bracketSc . processExpression
 
                                 return (Arrow arrFr' arrTo' van, typeType)
 
-                        _ -> do
-                                let fn = xs ^?! _head
-                                    as = xs ^?! _tail
-                                applyFunction fn as processExpression
-                                -- (fn', fnTyp) <- processExpression fn
-                                -- foldlM applyFn (fn', fnTyp) as
-                    where
-                        applyFn :: (ExpressionSpan, TypeSpan)
-                                -> P.ExpressionSpan
-                                -> Compact (ExpressionSpan, TypeSpan)
-                        applyFn (fn, fnTyp) ex = do
-                                (ex', exTyp) <- processExpression ex
-                                let spn = (srcSpanSpan `on` view exp_annot) fn ex'
-                                typ <- applyType spn fnTyp exTyp
-                                return (Apply fn ex' spn, typ)
-                        applyType :: SrcSpan -> TypeSpan -> TypeSpan -> Compact TypeSpan
-                        applyType spn fn ov = case fn of
-                                Arrow fr to _ -> fitify spn ov fr >> return to
-                                Forall typs ex an -> bracketScWith typs $ do
-                                        typ <- applyType spn ex ov
-                                        scope <- topSc
-                                        return (Forall scope typ an)
-                                _ -> do
-                                        addCErr (CErrCannotApply (prettyShow fn) (prettyShow ov)) spn
-                                        return fn
-                --         _ -> mapM processExpression xs >>= return . foldl1 go
-                --     where
-                --         go :: ExpressionSpan -> ExpressionSpan -> ExpressionSpan
-                --         go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
-                --                    in Apply fn ov spn
+                        fn : as -> applyFunction fn as processExpression
 
                 P.Lambda arg x an -> bracketSc $ do
                         (arg', argTyp) <- compactArgument arg
@@ -254,44 +225,47 @@ compactExpression = bracketSc . processExpression
                         compactBody bod
                         (x', xTyp) <- processExpression x
                         scope <- topSc
-                        return (Let scope x' an, error "type")
+                        return (Let scope x' an, xTyp)
 
                 P.Forall typs x an -> bracketSc $ do
                         mapM_ compactTypeBind typs
                         (x', xTyp) <- processExpression x
+                        unify an xTyp typeType
                         scope <- topSc
-                        return (Forall scope x' an, error "type")
+                        return (Forall scope x' an, typeType)
 
                 P.Exists typ x an -> bracketSc $ do
                         sym <- compactTypeBind typ
                         (x', xTyp) <- processExpression x
-                        return (Exists sym x' an, error "type")
+                        unify an xTyp typeType
+                        return (Exists sym x' an, typeType)
 
                 P.Select typ an -> do
                         sym <- compactTypeBind typ
-                        return (Select sym an, error "type")
+                        return (Select sym an, typeType)
 
                 P.ImplicitExpr impls an -> bracketSc $ do
                         mapM_ compactImplicits impls
                         scope <- topSc
-                        return (Implicit scope an, error "type")
+                        return (Implicit scope an, error "ImplicitExprType")
                     where
                         compactImplicits :: P.ImplicitBindingSpan -> Compact ()
                         compactImplicits (P.ImplicitBind idn x spn) = do
                                 let str = view idn_str idn
                                 (x', xTyp) <- compactExpression x
-                                let sym = SymbolVar str dontCare (Just x') False sym
+                                let sym = SymbolVar str (willCare str) (Just x') False sym
                                 insertAndHandleSc str sym spn
 
 compactTypeBind :: P.TypeBindSpan -> Compact SymbolSpan
 compactTypeBind (P.TypeBind idn typ an) = do
         let str = view idn_str idn
         (typ', typTyp) <- compactExprWhere typ
+        unify an typTyp typeType
         let sym = SymbolVar str typ' Nothing True sym
         insertAndHandleSc str sym an
         return sym
 
-applyFunction :: forall f x . Foldable f => x -> f x -> (x -> Compact (ExpressionSpan, TypeSpan))
+applyFunction :: forall x . x -> [x] -> (x -> Compact (ExpressionSpan, TypeSpan))
               -> Compact (ExpressionSpan, TypeSpan)
 applyFunction fn args compactFn = compactFn fn >>= \fnInfo -> foldlM go fnInfo args
     where
@@ -312,43 +286,25 @@ applyFunction fn args compactFn = compactFn fn >>= \fnInfo -> foldlM go fnInfo a
 
 compactArgument :: P.ArgumentSpan -> Compact (ArgumentSpan, TypeSpan)
 compactArgument arg' = case arg' of
-        P.DontCare an -> return (DontCare an, dontCare)
+        P.DontCare an -> return (set exp_annot an dontCare, dontCare)
         P.VarBinding str an -> do
-                let sym = SymbolVar str dontCare Nothing True sym
+                let typ = willCare str
+                    sym = SymbolVar str typ Nothing True sym
                 mSym <- lookupSc str
                 when (isNothing mSym) $ void (insertSc str sym)
-                let varTyp = maybe dontCare (view sym_type) mSym
+                let varTyp = maybe typ (view sym_type) mSym
                 return (Var str an, varTyp)
-        P.ApplyBinding args _an -> do
-                let fn = args ^?! _head
-                    as = args ^?! _tail
-                applyFunction fn as compactArgument
-                -- (fn', fnTyp) <- compactArgument fn
-                -- foldlM applyFn (fn', fnTyp) as
-            where
-                applyFn :: (ArgumentSpan, TypeSpan)
-                        -> P.ArgumentSpan
-                        -> Compact (ArgumentSpan, TypeSpan)
-                applyFn (fn, fnTyp) ex = do
-                        (ex', exTyp) <- compactArgument ex
-                        let spn = (srcSpanSpan `on` view exp_annot) fn ex'
-                        typ <- applyType spn fnTyp exTyp
-                        return (Apply fn ex' spn, typ)
-                applyType :: SrcSpan -> TypeSpan -> TypeSpan -> Compact TypeSpan
-                applyType spn fn ov = case fn of
-                        Arrow fr to _ -> fitify spn ov fr >> return to
-                        Forall typs ex an -> bracketScWith typs $ do
-                                typ <- applyType spn ex ov
-                                scope <- topSc
-                                return (Forall scope typ an)
-                        _ -> do
-                                addCErr (CErrCannotApply (prettyShow fn) (prettyShow ov)) spn
-                                return fn
-        -- P.ApplyBinding args _an -> mapM compactArgument args >>= return . foldl1 go
-        --     where
-        --         go :: ArgumentSpan -> ArgumentSpan -> ArgumentSpan
-        --         go fn ov = let spn = (srcSpanSpan `on` view exp_annot) fn ov
-        --                    in Apply fn ov spn
+        P.ApplyBinding args _ -> case toList args of
+                -- check for the specific case of _->_ being used
+                [P.VarBinding "_->_" van, arrFr, arrTo] -> do
+                        (arrFr', arrFrTyp) <- compactArgument arrFr
+                        fitify (view exp_annot arrFr') arrFrTyp typeType
+
+                        (arrTo', arrToTyp) <- compactArgument arrTo
+                        fitify (view exp_annot arrTo') arrToTyp typeType
+
+                        return (Arrow arrFr' arrTo' van, typeType)
+                fn : as -> applyFunction fn as compactArgument
 
 --------------------------------------------------------------------------------
 -- typechecking algorithms
@@ -359,8 +315,8 @@ unify spn exl exr = case (exl, exr) of
         (Forall typs ex an, _) -> bracketScWith typs $ unify spn ex exr
         (_, Forall typs ex an) -> bracketScWith typs $ unify spn exl ex
 
-        (DontCare _, _) -> return ()
-        (_, DontCare _) -> return ()
+        (DontCare mStr _, ex) -> handleDontCareStr mStr ex
+        (ex, DontCare mStr _) -> handleDontCareStr mStr ex
 
         (Var strl _, Var strr _) -> do
                 mSyml <- lookupSc strl
@@ -374,12 +330,12 @@ unify spn exl exr = case (exl, exr) of
                         if isJust mSymPair
                                 then do
                                         let Just (syml', symr') = mSymPair
-                                        replaceSc (view sym_idn syml') syml'
-                                        replaceSc (view sym_idn symr') symr'
+                                        adjustSc (view sym_idn syml') (set sym_parent syml')
+                                        adjustSc (view sym_idn symr') (set sym_parent symr')
                                 else addCErr ((CErrTypeError `on` view sym_idn) syml symr) spn
 
-        (Var strl _, exr) -> handleVarSomething strl exr
-        (exl, Var strr _) -> handleVarSomething strr exl
+        (Var str _, ex) -> handleVarSomething str ex
+        (ex, Var str _) -> handleVarSomething str ex
 
         (Apply fnl ovl _, Apply fnr ovr _) -> unify spn fnl fnr >> unify spn ovl ovr
 
@@ -390,6 +346,14 @@ unify spn exl exr = case (exl, exr) of
         _ -> typeError
 
     where
+        typeError :: Compact ()
+        typeError = addCErr (CErrTypeError (prettyShow exl) (prettyShow exr)) spn
+
+        handleDontCareStr :: Maybe String -> ExpressionSpan -> Compact ()
+        handleDontCareStr mStr ex = when (isJust mStr) $ do
+                let Just str = mStr
+                adjustSc str (set sym_type ex)
+
         handleVarSomething :: String -> ExpressionSpan -> Compact ()
         handleVarSomething str ex = do
                 mSym <- lookupSc str
@@ -398,13 +362,12 @@ unify spn exl exr = case (exl, exr) of
                         -- unify spn (view sym_type sym) ex
                         case sym of
                                 SymbolVar _ _ Nothing _ _ -> do
-                                        let sym' = set sym_value (Just exr) sym
-                                        replaceSc (view sym_idn sym) sym'
+                                        let t = trace ("var " ++ str ++ " | ex " ++ prettyShow ex)
+                                        let sym' = set sym_value (Just ex) sym
+                                        replaceSc (view sym_idn sym) (t sym')
                                 SymbolVar _ _ (Just varEx) _ _ -> unify spn varEx ex
 
                                 _ -> typeError
-        typeError :: Compact ()
-        typeError = addCErr (CErrTypeError (prettyShow exl) (prettyShow exr)) spn
 
 -- unilateral unification, left fits in right
 fitify :: SrcSpan -> ExpressionSpan -> ExpressionSpan -> Compact ()

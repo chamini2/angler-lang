@@ -77,7 +77,9 @@ data Expression a
   --       , _exp_annot    :: a
   --       }
   | DontCare
-        { _exp_annot    :: a }
+        { _dnt_replace  :: Maybe String
+        , _exp_annot    :: a
+        }
   -- hard-coded parts of the language
   | Arrow
         { _arr_from     :: Expression a
@@ -93,7 +95,10 @@ typeType :: ExpressionSpan
 typeType = TypeType SrcSpanNoInfo
 
 dontCare :: ExpressionSpan
-dontCare = DontCare SrcSpanNoInfo
+dontCare = DontCare Nothing SrcSpanNoInfo
+
+willCare :: String -> ExpressionSpan
+willCare str = DontCare (Just str) SrcSpanNoInfo
 
 type Type           = Expression
 type TypeSpan       = Expression SrcSpan
@@ -210,7 +215,7 @@ symbolStr sym = case sym of
 -- PrettyShow
 
 instance PrettyShow (Expression a) where
-        pshow = pshow' False
+        pshow = pshow' True
             where
                 pshow' :: Bool -> Expression a -> PrettyShowed
                 pshow' paren expr = pparen "(" >> exprCase >> pparen ")"
@@ -220,6 +225,8 @@ instance PrettyShow (Expression a) where
                                 Var {}      -> return ()
                                 Lit {}      -> return ()
                                 Implicit {} -> return ()
+                                DontCare {} -> return ()
+                                TypeType {} -> return ()
                                 _ -> when paren (string s)
                         exprCase :: PrettyShowed
                         exprCase = case expr of
@@ -250,7 +257,7 @@ instance PrettyShow (Expression a) where
                                 Select typ _ -> string "select " >> pshow typ
                                 Implicit ims _ ->
                                         string "{" >> pshows (string ", ") (toList ims) >> string "}"
-                                DontCare _ -> string "_"
+                                DontCare _ _ -> string "_"
                                 Arrow f t _ -> pshow f >> string " -> " >> pshow t
                                 TypeType _ -> string "Type"
 
@@ -283,5 +290,4 @@ instance PrettyShow (Symbol a) where
                         string str >> string " : " >> pshow typ
                         when (isJust mval) $ do
                                 let Just val = mval
-                                line
-                                string str >> string " = " >> pshow val
+                                string " |= " >> pshow val
