@@ -26,8 +26,6 @@ import           Data.Function               (on)
 import           Data.Maybe                  (isJust, isNothing, fromMaybe)
 import           Data.Sequence               (Seq, drop)
 
-import           Debug.Trace
-
 import           Prelude                     hiding (drop)
 
 --------------------------------------------------------------------------------
@@ -136,8 +134,7 @@ compactBody = mapM_ loadTableBodyStmt . view P.bod_stmts
                                 (args', defn') <- bracketSc $ do
                                         (args', fnTyp')  <- compactFunctionArgument str arg fnTyp
                                         (defn', defnTyp) <- compactExprWhere defn
-                                        let t = trace (str ++ " (" ++ show (length args') ++ "): " ++ prettyShow fnTyp ++ " ~~> "++ prettyShow fnTyp')
-                                        unify an defnTyp (t fnTyp')
+                                        unify an defnTyp fnTyp'
                                         return (args', defn')
 
                                 adjustSc str (over sym_defs (|> (args', defn')))
@@ -374,9 +371,8 @@ unify spn exl exr = bracketSc $ case (exl, exr) of
                         -- unify spn (view sym_type sym) ex
                         case sym of
                                 SymbolVar _ _ Nothing _ _ -> do
-                                        let t = trace ("var " ++ str ++ " | ex " ++ prettyShow ex)
                                         let sym' = set sym_value (Just ex) sym
-                                        replaceSc (view sym_idn sym) (t sym')
+                                        replaceSc (view sym_idn sym) sym'
                                 SymbolVar _ _ (Just varEx) _ _ -> unify spn varEx ex
 
                                 _ -> typeError
