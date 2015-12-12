@@ -1,0 +1,75 @@
+-- operator _._ infixL 10
+-- _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
+-- _._ f g x = f (g x)
+
+closed Bool : Type with
+        True : Bool
+        False : Bool
+
+closed Nat : Type with
+        Z : Nat
+        S : Nat -> Nat
+
+operator _::_ infixR 10
+closed Vect : Nat -> Type -> Type with
+        Nil  : forall t:Type        . Vect Z t
+        _::_ : forall u:Type, n:Nat . u -> Vect n u -> Vect (S n) u
+
+not : Bool -> Bool
+not True  = False
+not False = True
+
+testS : Nat
+testS = S Z
+
+operator _s postfix 5
+_s : Nat -> Nat
+-- _s x = S (not x)
+
+g : Nat
+g = Z s s s s s s
+
+vectId : forall n:Nat, v:Type . Vect n v -> Vect n v
+vectId Nil = Nil
+
+drop1 : forall nn:Nat, vv:Type . Vect (S nn) vv -> Vect nn vv
+drop1 (_ :: xs) = xs
+-- drop1 Nil = Nil
+
+length : forall m:Nat, v:Type . Vect m v -> Nat
+length Nil = Z
+length (_ :: xs) = S (length xs)
+
+testType : Type -> Type
+testType (x -> _) = x
+
+k : Nat
+k = length (False :: True :: Nil)
+
+-- x : Vect (S (S Z)) Bool
+-- x = Nil
+
+-- fff : (select f : Nat -> Nat) -> Vect (f Z) Nat
+-- fff = fff
+
+-- vect : Vect Z Nat
+-- vect = Nil
+
+closed List : Type -> Type with
+        LNil : forall x:Type . List x
+        Cons : forall x:Type . x -> List x -> List x
+
+-- good test for typechecking
+sum' : List Nat -> Nat
+-- sum' ls = length' ls
+length' : forall a : Type . List a -> Nat
+length' ls = sum' ls
+
+{-
+h : (a   , Nat)
+g : (Bool, b  )
+
+unify  h g = (Bool, Nat)
+fitify h g = error
+fitify g h = error
+-}
