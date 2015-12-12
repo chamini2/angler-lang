@@ -2,6 +2,8 @@
 
 module Language.Angler.Options where
 
+import           Language.Angler.Monad         (foldActions)
+
 import           Control.Lens
 
 import           Data.Default                  (Default(..))
@@ -13,11 +15,15 @@ import           System.Directory              (doesDirectoryExist)
 data Options
   = Options
         { _opt_warnings :: Bool
-        , _opt_verbose  :: Bool
+
+        -- stages printing
+        , _opt_options  :: Bool
         , _opt_tokens   :: Bool
         , _opt_ast      :: Bool
         , _opt_mixfix   :: Bool
         , _opt_compact  :: Bool
+
+        -- behaviour
         , _opt_stdin    :: Bool
         -- , _opt_symbols  :: Bool
         -- , _opt_execute  :: Bool
@@ -26,14 +32,34 @@ data Options
         , _opt_stdlib   :: Bool
         , _opt_path     :: [FilePath]
         }
-  deriving (Eq, Show)
 
 makeLenses ''Options
+
+instance Show Options where
+        show opt = showBoolOpts [ ("warnings", opt_warnings)
+                                , ("stdin", opt_stdin)
+                                , ("stdlib", opt_stdlib) ] ++
+                   "path: " ++ showPaths (view opt_path opt) ++ "\n" ++
+                   showBoolOpts [ ("options", opt_options)
+                                , ("tokens", opt_tokens)
+                                , ("ast", opt_ast)
+                                , ("mixfix", opt_mixfix)
+                                , ("compact", opt_compact) ]
+            where
+                showBoolOpts :: [(String, Getting Bool Options Bool)] -> String
+                showBoolOpts = concatMap (uncurry showBoolOpt)
+                showBoolOpt :: String -> Getting Bool Options Bool -> String
+                showBoolOpt desc l = desc ++ ": " ++ (if view l opt then "ON" else "OFF") ++ "\n"
+                showPaths :: [FilePath] -> String
+                showPaths = concat . fmap quoteFile
+                    where
+                        quoteFile :: FilePath -> FilePath
+                        quoteFile f = " " ++ if elem ' ' f then "\"" ++ f ++ "\"" else f
 
 instance Default Options where
     def = Options
         { _opt_warnings = True
-        , _opt_verbose  = False
+        , _opt_options  = False
         , _opt_tokens   = False
         , _opt_ast      = False
         , _opt_mixfix   = False
@@ -53,58 +79,61 @@ optionDescrs =
         , Option ['v'] ["version"]       ((NoArg . const . putLnSuccess) version)
                 "shows version number"
 
-        , Option ['w'] ["warnings"]      (NoArg (optBool opt_warnings True))
+        , Option ['w'] ["warnings"]      (NoArg (optBool True  opt_warnings))
                 "shows all warnings (default)"
-
-        , Option ['W'] ["no-warnings"]   (NoArg (optBool opt_warnings False))
+        , Option ['W'] ["no-warnings"]   (NoArg (optBool False opt_warnings))
                 "suppress all warnings"
 
-        , Option ['s'] ["stdin"]         (NoArg (optBool opt_stdin True))
-                "reads the program to interpret from standard input, rather than a file"
+        , Option ['i'] ["stdin"]         (NoArg (optBool True  opt_stdin))
+                "reads the program to interpret from standard input until EOF ('^D')"
+        , Option []    ["no-stdin"]      (NoArg (optBool False opt_stdin))
+                "reads the program from a file passed as argument (default)"
 
-        , Option []    ["stdlib"]        (NoArg (optBool opt_stdlib True))
+        , Option []    ["stdlib"]        (NoArg (optBool True  opt_stdlib))
                 "adds the standard library to the path (default)"
-
-        , Option []    ["no-stdlib"]     (NoArg (optBool opt_stdlib False))
+        , Option []    ["no-stdlib"]     (NoArg (optBool False opt_stdlib))
                 "removes the standard library from the path"
 
         , Option ['p'] ["path"]          (ReqArg optPath "PATH")
                 "adds a directory to the path"
 
-        , Option ['V'] ["verbose"]       (NoArg (optBool opt_verbose True))
+        , Option ['V'] ["verbose"]       (NoArg (optVerbose True))
                 ("to show output for the several stages of interpreting, " ++
-                "this turns on the following flags: tokens, ast, mixfix-ast")
-
-        , Option []    ["no-verbose"]    (NoArg (optBool opt_verbose False))
+                "this turns on the following flags: options, tokens, ast, mixfix, compact")
+        , Option []    ["no-verbose"]    (NoArg (optVerbose False))
                 "avoids showing output for the several stages of interpreting (default)"
 
-        , Option []    ["tokens"]        (NoArg (optBool opt_tokens True))
-                "shows the tokens recognized by the lexer"
+        , Option []    ["options"]       (NoArg (optBool True  opt_options))
+                "shows the options passed to the program"
+        , Option []    ["no-options"]    (NoArg (optBool False opt_options))
+                "avoids showing the options passed to the program (default)"
 
-        , Option []    ["no-tokens"]     (NoArg (optBool opt_tokens False))
+        , Option []    ["tokens"]        (NoArg (optBool True  opt_tokens))
+                "shows the tokens recognized by the lexer"
+        , Option []    ["no-tokens"]     (NoArg (optBool False opt_tokens))
                 "avoids showing the tokens recognized by the lexer (default)"
 
-        , Option []    ["ast"]           (NoArg (optBool opt_ast True))
+        , Option []    ["ast"]           (NoArg (optBool True  opt_ast))
                 "shows the parsed AST"
-
-        , Option []    ["no-ast"]        (NoArg (optBool opt_ast False))
+        , Option []    ["no-ast"]        (NoArg (optBool False opt_ast))
                 "avoids showing the parsed AST (default)"
 
-        , Option []    ["mixfix-ast"]    (NoArg (optBool opt_mixfix True))
+        , Option []    ["mixfix"]        (NoArg (optBool True  opt_mixfix))
                 "shows the parsed AST after passing the mixfix parser"
-
-        , Option []    ["no-mixfix-ast"] (NoArg (optBool opt_mixfix False))
+        , Option []    ["no-mixfix"]     (NoArg (optBool False opt_mixfix))
                 "avoids showing the parsed AST after passing the mixfix parser (default)"
 
-        , Option []    ["compact-ast"]    (NoArg (optBool opt_compact True))
+        , Option []    ["compact-ast"]    (NoArg (optBool True  opt_compact))
                 "shows the AST after compacting it"
-
-        , Option []    ["no-compact-ast"] (NoArg (optBool opt_compact False))
+        , Option []    ["no-compact-ast"] (NoArg (optBool False opt_compact))
                 "avoids showing AST after compacting it (default)"
         ]
     where
-        optBool :: Lens' Options Bool -> Bool -> Options -> IO Options
-        optBool lns b = return . set lns b
+        optVerbose :: Bool -> Options -> IO Options
+        optVerbose b = foldActions $ fmap (optBool b) [opt_options, opt_tokens, opt_ast, opt_mixfix, opt_compact]
+
+        optBool :: Bool -> ASetter' Options Bool -> Options -> IO Options
+        optBool b lns = return . set lns b
 
         optPath :: String -> Options -> IO Options
         optPath dir opt = doesDirectoryExist dir >>= \ans ->
@@ -115,9 +144,7 @@ optionDescrs =
         putLnSuccess str = putStrLn str >> exitWith ExitSuccess
 
         help :: String
-        help = flip usageInfo optionDescrs "usage: angler [OPTIONS...] [FILE]\n" ++
-                "\twhen running angler without arguments, the interpreter " ++
-                "consumes the standard input until it receives an EOF ('^D') character."
+        help = flip usageInfo optionDescrs "usage: angler [OPTIONS...] [FILE]\n"
 
         version :: String
         version = "Angler version 0.1.0.0"

@@ -41,11 +41,11 @@ main = do
         putErrorsUnlessNull optErrors
 
         options <- foldActions optActions def
-        print options
+        when (view opt_options options) $ print options
 
         (filepath, handle) <- case (nonOptions, view opt_stdin options) of
                 ([f], False) -> do
-                        h <- (openModule f . pshowError . IOError . OpenModule) f
+                        h <- openModule f ((pshowError . IOError . OpenModule) f)
                         return (f, h)
                 ([] , True ) -> return ("<stdin>", stdin)
                 ([] , False) -> pshowError (IOError NoModules)
@@ -67,7 +67,7 @@ readModule options filepath handle = do
         input <- hGetContents handle
         let loc = startLoc filepath
 
-        when (view opt_tokens options || view opt_verbose options) $ do
+        when (view opt_tokens options) $ do
                 printStage "lexer" Nothing
                 (_,lexSecs) <- stopwatch $ case lexProgram input loc of
                         Right (ts,_) -> evaluate ts >>= putStrLn . showTokens
@@ -80,7 +80,7 @@ readModule options filepath handle = do
         (parseProg,parseSecs) <- stopwatch $ case parseProgram input loc of
                 Right (prog,ws) -> mapM_ print ws >> evaluate prog
                 Left  err       -> pshowError err
-        when (view opt_ast options || view opt_verbose options) $ do
+        when (view opt_ast options) $ do
                 printStage "parser" Nothing
                 putStrLn (prettyShow parseProg)
                 printStage "parser" (Just parseSecs)
@@ -90,7 +90,7 @@ readModule options filepath handle = do
         (mixfixProg,mixfixSecs) <- stopwatch $ case parseMixfix parseProg of
                 Right prog -> evaluate prog
                 Left  errs -> pshowErrors errs
-        when (view opt_mixfix options || view opt_verbose options) $ do
+        when (view opt_mixfix options) $ do
                 printStage "mixfix parser" Nothing
                 putStrLn (prettyShow mixfixProg)
                 printStage "mixfix parser" (Just mixfixSecs)
@@ -98,7 +98,7 @@ readModule options filepath handle = do
         (compactTab,compactSecs) <- stopwatch $ case compactAST mixfixProg of
                 Right (symTab,ws) -> mapM_ print ws >> evaluate symTab
                 Left  errs        -> pshowErrors errs
-        when (view opt_compact options || view opt_verbose options) $ do
+        when (view opt_compact options) $ do
                 printStage "compact" Nothing
                 putStrLn (prettyShow compactTab)
                 printStage "compact" (Just compactSecs)
@@ -181,5 +181,8 @@ pshowErrorsUnlessNull :: (Functor f, Foldable f, PrettyShow s) => f s -> IO ()
 pshowErrorsUnlessNull = putErrorsUnlessNull . fmap ((++"\n") . prettyShow)
 
 openModule :: FilePath -> IO Handle -> IO Handle
-openModule path act = print path >> doesFileExist path >>= \ans ->
-        if ans then openFile path ReadMode else act
+openModule path defHandle = do
+        ans <- doesFileExist path
+        if ans
+                then openFile path ReadMode
+                else defHandle
