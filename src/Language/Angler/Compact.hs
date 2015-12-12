@@ -242,7 +242,9 @@ compactExpression = bracketSc . processExpression
 
                 P.Select typ an -> do
                         sym <- compactTypeBind typ
-                        return (Select sym an, typeType)
+                        let str = view sym_idn sym
+                            typ = view sym_type sym
+                        return (Select str typ an, typeType)
 
                 P.ImplicitExpr impls an -> bracketSc $ do
                         mapM_ compactImplicits impls
@@ -311,9 +313,12 @@ compactArgument arg' = case arg' of
 
 -- bilateral unification
 unify :: SrcSpan -> ExpressionSpan -> ExpressionSpan -> Compact ()
-unify spn exl exr = case (exl, exr) of
-        (Forall typs ex an, _) -> bracketScWith typs $ unify spn ex exr
-        (_, Forall typs ex an) -> bracketScWith typs $ unify spn exl ex
+unify spn exl exr = bracketSc $ case (exl, exr) of
+        (Forall typs fex _, ex) -> bracketScWith typs $ unify spn fex ex
+        (ex, Forall typs fex _) -> bracketScWith typs $ unify spn ex fex
+
+        (Select str typ an, ex) -> handleSelect str typ an ex
+        (ex, Select str typ an) -> handleSelect str typ an ex
 
         (DontCare mStr _, ex) -> handleDontCareStr mStr ex
         (ex, DontCare mStr _) -> handleDontCareStr mStr ex
@@ -348,6 +353,13 @@ unify spn exl exr = case (exl, exr) of
     where
         typeError :: Compact ()
         typeError = addCErr (CErrTypeError (prettyShow exl) (prettyShow exr)) spn
+
+        handleSelect :: String -> TypeSpan -> SrcSpan -> ExpressionSpan -> Compact ()
+        handleSelect str sTyp an ex = do
+                let sym = SymbolVar str sTyp Nothing True sym
+                insertSc str sym
+                let vex = Var str an
+                unify spn vex ex
 
         handleDontCareStr :: Maybe String -> ExpressionSpan -> Compact ()
         handleDontCareStr mStr ex = when (isJust mStr) $ do

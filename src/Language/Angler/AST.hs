@@ -44,7 +44,6 @@ data Expression a
         }
   | Lambda
         { _lam_arg      :: Argument a
-        -- , _lam_arg_type :: Type a
         , _lam_expr     :: Expression a
         , _exp_annot    :: a
         }
@@ -64,7 +63,8 @@ data Expression a
         , _exp_annot    :: a
         }
   | Select
-        { _slct_type    :: Symbol a
+        { _slct_str     :: String
+        , _slct_typ     :: Type a
         , _exp_annot    :: a
         }
   | Implicit
@@ -254,7 +254,7 @@ instance PrettyShow (Expression a) where
                                 Exists typ x _ -> do
                                         string "exists " >> pshow typ
                                         string " . " >> pshow x
-                                Select typ _ -> string "select " >> pshow typ
+                                Select str typ _ -> string "select " >> string str >> string " : " >> pshow typ
                                 Implicit ims _ ->
                                         string "{" >> pshows (string ", ") (toList ims) >> string "}"
                                 DontCare _ _ -> string "_"

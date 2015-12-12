@@ -2,6 +2,9 @@
 -- _._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
 -- _._ f g x = f (g x)
 
+id : forall t:Type . t -> t
+id x = x
+
 closed Bool : Type with
         True : Bool
         False : Bool
@@ -10,10 +13,20 @@ closed Nat : Type with
         Z : Nat
         S : Nat -> Nat
 
+operator _+_ infixL 6
+_+_ : Nat -> Nat -> Nat
+Z + n = n
+S m + n = S (m + n)
+
 operator _::_ infixR 10
 closed Vect : Nat -> Type -> Type with
         Nil  : forall t:Type        . Vect Z t
         _::_ : forall u:Type, n:Nat . u -> Vect n u -> Vect (S n) u
+
+operator _++_ infixR 9
+_++_ : forall nn:Nat, mm:Nat, x:Type . Vect nn x -> Vect mm x -> Vect (nn+mm) x
+_++_ Nil = id
+l::ls ++ rs = l :: (ls ++ rs)
 
 not : Bool -> Bool
 not True  = False
@@ -21,6 +34,7 @@ not False = True
 
 testS : Nat
 testS = S Z
+
 
 operator _s postfix 5
 _s : Nat -> Nat
@@ -59,10 +73,14 @@ closed List : Type -> Type with
         LNil : forall x:Type . List x
         Cons : forall x:Type . x -> List x -> List x
 
+concat : forall a:Type . List a -> List a -> List a
+concat LNil rs = rs
+concat (Cons l ls) rs = Cons l (concat ls rs)
+
 -- good test for typechecking
 sum' : List Nat -> Nat
--- sum' ls = length' ls
 length' : forall a : Type . List a -> Nat
+sum' ls = length' ls
 length' ls = sum' ls
 
 {-
