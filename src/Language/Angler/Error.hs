@@ -49,8 +49,19 @@ data LexError
 instance Show LexError where
         show le = case le of
                 LErr                  str -> str
-                LErrUnexpectedCharacter c -> "unexpected character " ++ ticks [c]
+                LErrUnexpectedCharacter c -> "unexpected character " ++ ticks (caseShow c)
                 LErrUnterminatedComment   -> "unterminated comment"
+            where
+                caseShow :: Char -> String
+                caseShow chr = case chr of
+                        '\a' -> "\\a"
+                        '\b' -> "\\b"
+                        '\f' -> "\\f"
+                        '\n' -> "\\n"
+                        '\r' -> "\\r"
+                        '\t' -> "\\t"
+                        '\v' -> "\\v"
+                        _ -> [chr]
 
 instance PrettyShow LexError where
         pshow = string . show

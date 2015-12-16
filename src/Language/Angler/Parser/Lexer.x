@@ -129,10 +129,6 @@ $white_no_nl+   ;
         \}      { token TkRCurly }
 
         \_      { token TkUnderscore }
-
-        -- errors
-        -- ''      { lexError EmptyChar }
-        -- '@ident { lexError QuoteStartIdent }
 }
 
 <layout> {
@@ -217,6 +213,9 @@ alexGetByte inp = case inp of
 
 type LPAction a = SrcSpan -> String -> Int -> LP a
 type Action = LPAction (Located Token)
+
+throwLError :: LexError -> SrcSpan -> LP a
+throwLError err span = throwError (Loc span (LexError err))
 
 ----------------------------------------
 -- LPState's manipulation
@@ -374,7 +373,7 @@ lexToken = do
                 AlexEOF -> do
                     ls' <- peekM lp_lex_state
                     if ls' == comment
-                        then (throwError . Loc (srcLocSpan l l) . LexError) LErrUnterminatedComment
+                        then throwLError LErrUnterminatedComment (srcLocSpan l l)
                         else do
                         ctx <- use lp_context
                         if not (null ctx)
@@ -382,7 +381,7 @@ lexToken = do
                             then popM lp_context >> return (Loc (srcLocSpan l l) TkVRCurly)
                             else return (Loc (srcLocSpan l l) TkEOF)
                 AlexError (l',_,_,c':_) ->
-                        (throwError . Loc (srcLocSpan l l) . LexError) (LErrUnexpectedCharacter c')
+                        throwLError (LErrUnexpectedCharacter c') (srcLocSpan l l)
                 AlexSkip  inp' _len -> setInput inp' >> lexToken
                 AlexToken inp'@(l',_,_,_) len act -> setInput inp' >> act (srcLocSpan l l') b len
 
