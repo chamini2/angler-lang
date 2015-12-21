@@ -74,7 +74,7 @@ instance Default CompactState where
                         arrExpr f t = Arrow f t SrcSpanNoInfo
 
 compactAST :: P.ModuleSpan -> Either [Located Error] (SymbolTableSpan, [Located Warning])
-compactAST = handleEither . snd . flip runCompact def . compactModule
+compactAST = handleEither . snd . runCompact . compactModule
     where
         handleEither :: CompactState -> Either [Located Error] (SymbolTableSpan, [Located Warning])
         handleEither st = let errs = view st_errors   st
@@ -82,8 +82,8 @@ compactAST = handleEither . snd . flip runCompact def . compactModule
                               wrns = view st_warnings st
                           in if length errs > 0 then Left errs else Right (tab, wrns)
 
-runCompact :: Compact a -> CompactState -> (a, CompactState)
-runCompact = runState
+runCompact :: Compact a -> (a, CompactState)
+runCompact = flip runState def
 
 ----------------------------------------
 

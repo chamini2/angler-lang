@@ -45,9 +45,9 @@ data Token
   | TkReopen
   | TkClosed
   | TkWith
+  | TkWhere
   | TkLet
   | TkIn
-  | TkWhere
   | TkForall
   | TkExists
   | TkSelect

@@ -121,9 +121,9 @@ spn_ecol spn_fn spn = wrap <$> spn_fn (srcSpanECol spn)
 instance Show SrcSpan where
         show spn = case spn of
                 SrcSpanNoInfo                  -> "<no location info>:"
-                SrcSpanPoint f l c             -> locationSeparator (f : fmap show [(l, c)])
-                SrcSpanOneLine f l c1 c2       -> locationSeparator (f : fmap show [(l, c1), (l, c2)])
-                SrcSpanMultiline f l1 c1 l2 c2 -> locationSeparator (f : fmap show [(l1, c1), (l2, c2)])
+                SrcSpanPoint f l c             -> locationSeparator (f : fmap show [l, c])
+                SrcSpanOneLine f l c1 c2       -> locationSeparator (f : fmap show [l, c1, l, c2])
+                SrcSpanMultiline f l1 c1 l2 c2 -> locationSeparator (f : fmap show [l1, c1, l2, c2])
 
 instance Eq SrcSpan where
         a == b = case (a,b) of
@@ -208,7 +208,10 @@ data Located e
 makeLenses ''Located
 
 instance Show e => Show (Located e) where
-        show (Loc spn e) = show spn ++ "\t\t" ++ show e
+        show (Loc spn e) = show spn ++ indent (show e)
+            where
+                indent :: String -> String
+                indent = concatMap ("\t\t" ++) . lines
 
 instance PrettyShow e => PrettyShow (Located e) where
         pshow (Loc spn e) = do

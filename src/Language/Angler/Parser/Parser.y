@@ -51,9 +51,9 @@ import           Data.Maybe                   (isJust, fromJust)
         'reopen'                { Loc $$ TkReopen        }
         'closed'                { Loc $$ TkClosed        }
         'with'                  { Loc $$ TkWith          }
+        'where'                 { Loc $$ TkWhere         }
         'let'                   { Loc $$ TkLet           }
         'in'                    { Loc $$ TkIn            }
-        'where'                 { Loc $$ TkWhere         }
         'forall'                { Loc $$ TkForall        }
         'exists'                { Loc $$ TkExists        }
         'select'                { Loc $$ TkSelect        }
