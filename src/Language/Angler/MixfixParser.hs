@@ -18,7 +18,7 @@ import           Control.Lens                hiding (op, below, parts)
 
 import           Control.Monad               (when)
 import           Control.Monad.Except        (Except, runExcept)
-import           Control.Monad.State         (StateT, runStateT, gets)
+import           Control.Monad.State         (State, runState)
 
 import           Data.Function               (on)
 import           Data.Default                (Default(..))
@@ -34,11 +34,18 @@ import qualified Data.Map.Strict             as Map
 import           Text.Megaparsec             (ParsecT, runParserT', choice, eof, token, try)
 import           Text.Megaparsec.Error       (ParseError, Message(..), errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos)
-import           Text.Megaparsec.Prim        (State(..), MonadParsec)
+import           Text.Megaparsec.Prim        (MonadParsec)
+import qualified Text.Megaparsec.Prim        as TM
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
+
+import           Debug.Trace
+import           PrettyShow
 
 --------------------------------------------------------------------------------
 -- Operator handling
+
+type OpScope = Scope Operator
+type OpTable = ScopedTable Operator
 
 type Fixity' = Fixity ()
 
@@ -78,14 +85,24 @@ op_prts op_fn op = wrap <$> views op_idn (op_fn . strOp) op
 --------------------------------------------------------------------------------
 -- LoadPrecTable monad
 
-type LoadPrecTableState = ScopedTable Operator
-type LoadPrecTable = StateT LoadPrecTableState (Except [Located Error])
+type LoadPrecTable = State LoadPrecTableState
+
+data LoadPrecTableState
+  = LoadPrecTableState
+        { _lp_table      :: OpTable
+        , _lp_errors     :: [Located Error]
+        }
+
+makeLenses ''LoadPrecTableState
+
+instance STErrors LoadPrecTableState where
+        st_errors = lp_errors
 
 instance STScopedTable LoadPrecTableState Operator where
-        st_table = id
+        st_table = lp_table
 
 instance Default LoadPrecTableState where
-        def = ST.fromFoldable [arrowOperator]
+        def = LoadPrecTableState (ST.fromFoldable [arrowOperator]) []
             where
                 arrowOperator :: (String, Operator)
                 arrowOperator = (str, op)
@@ -94,10 +111,14 @@ instance Default LoadPrecTableState where
                         op = Operator str (Infix RightAssoc 0 ())
 
 parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
-parseMixfix = over _Right fst . runMixfix . mixfixModule
+parseMixfix = handleEither . runMixfix . mixfixModule
+    where
+        handleEither :: (ModuleSpan, LoadPrecTableState) -> Either [Located Error] ModuleSpan
+        handleEither (mdl, st) = let errs = view st_errors st
+                                 in if length errs > 0 then Left errs else Right mdl
 
-runMixfix :: LoadPrecTable a -> Either [Located Error] (a, LoadPrecTableState)
-runMixfix = runExcept . flip runStateT def
+runMixfix :: LoadPrecTable a -> (a, LoadPrecTableState)
+runMixfix = flip runState def
 
 ----------------------------------------
 
@@ -116,7 +137,7 @@ mixfixBody bdy = mapM_ loadPrecOp (view bod_stmts bdy)
                         merr <- insertSc idn' (Operator idn' fix')
                         when (isJust merr) $ do
                                 let Just err = merr
-                                throwError [Loc spn err]
+                                addError err spn
                 _ -> return ()
 
         mixfixBodyStmt :: BodyStmtSpan -> LoadPrecTable BodyStmtSpan
@@ -142,20 +163,19 @@ mixfixExprWhere whre = bracketSc $ whre & (whre_body._Just) mixfixBody
 
 mixfixExpression :: ExpressionSpan -> LoadPrecTable ExpressionSpan
 mixfixExpression expr = case expr of
-        Var {} -> return expr
+        Var name spn -> opParse [name] spn [expr] >>= handleParseEither
+
         Lit {} -> return expr
+
         Apply xs spn -> do
-                xs'  <- toList <$> mapM mixfixExpression xs
-                eith <- runOpParser (generateOpParser (exprListVars xs)) spn xs'
-                flattenExpression <$> case eith of
-                        Left perr -> do
-                                let msgs = errorMessages perr
-                                    eSpn = posSpan (errorPos perr)
-                                throwError (fmap (Loc eSpn . messageError) msgs)
-                        Right x -> return x
+                xs'  <- toList <$> mapM mixfixExpression' xs
+                eith <- opParse (exprListVars xs) spn xs'
+                handleParseEither (flattenExpression <$> eith)
             where
-                posSpan :: SourcePos -> SrcSpan
-                posSpan p = SrcSpanPoint (sourceName p) (sourceLine p) (sourceColumn p)
+                mixfixExpression' :: ExpressionSpan -> LoadPrecTable ExpressionSpan
+                mixfixExpression' expr' = case expr' of
+                        Var {} -> return expr'
+                        _      -> mixfixExpression expr'
 
                 exprListVars :: Foldable f =>  f ExpressionSpan -> [String]
                 exprListVars = foldl' go []
@@ -172,12 +192,6 @@ mixfixExpression expr = case expr of
                                 _   -> Apply (fmap flattenExpression xs') an
                         _ -> expr'
 
-                messageError :: Message -> Error
-                messageError msg = CheckError $ case msg of
-                        Expected   str -> CErrExpected str
-                        Unexpected str -> CErrUnexpected str
-                        Message    str -> CErr str
-
         Lambda {}       -> expr & lam_arg  mixfixArgument
                               >>= lam_expr mixfixExpression
 
@@ -193,6 +207,34 @@ mixfixExpression expr = case expr of
         Select {}       -> expr & slct_type mixfixTypeBind
 
         ImplicitExpr {} -> expr & impl_exprs (mapM mixfixImplicit)
+
+    where
+        handleParseEither :: Either ParseError ExpressionSpan -> LoadPrecTable ExpressionSpan
+        handleParseEither = either handleParseError return
+            where
+                handleParseError :: ParseError -> LoadPrecTable ExpressionSpan
+                handleParseError perr = do
+                        let msgs = errorMessages perr
+                            eSpn = posSpan (errorPos perr)
+                        addCErr (messagesError msgs) eSpn
+                        return expr
+
+                posSpan :: SourcePos -> SrcSpan
+                posSpan p = SrcSpanPoint (sourceName p) (sourceLine p) (sourceColumn p)
+
+messagesError :: [Message] -> CheckError
+messagesError = uncurry' . foldl' go ([], [], [])
+    where
+        go :: ([String], [String], [String]) -> Message -> ([String], [String], [String])
+        go errs msg = over lns (|> str) errs
+            where
+                (lns, str) = case msg of
+                        Expected   str -> (_1, str)
+                        Unexpected str -> (_2, str)
+                        Message    str -> (_3, str)
+
+        uncurry' :: ([String], [String], [String]) -> CheckError
+        uncurry' (exs, uns, mss) = CErrMixfix exs uns mss
 
 mixfixTypeBind :: TypeBindSpan -> LoadPrecTable TypeBindSpan
 mixfixTypeBind = typ_type mixfixExprWhere
@@ -223,17 +265,24 @@ mixfixImplicit = impl_expr mixfixExpression
 type ExprSpan = ExpressionSpan
 type OpParser = ParsecT [ExprSpan] LoadPrecTable
 
+opParse :: [String] -> SrcSpan -> [ExprSpan] -> LoadPrecTable (Either ParseError ExprSpan)
+opParse = runOpParser . generateOpParser
+
 runOpParser :: OpParser a -> SrcSpan -> [ExprSpan] -> LoadPrecTable (Either ParseError a)
 runOpParser act spn input = snd <$> runParserT' act initialState
     where
-        initialState :: State [ExprSpan]
-        initialState = State input (spanPos spn) 8
+        initialState :: TM.State [ExprSpan]
+        initialState = TM.State input (spanSPos spn) 8
 
 ----------------------------------------
 -- DSL connections
 
-spanPos :: SrcSpan -> SourcePos
-spanPos spn = newPos (view spn_file spn) (view spn_eline spn) (view spn_ecol spn)
+spanSPos :: SrcSpan -> SourcePos
+spanSPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
+spanEPos :: SrcSpan -> SourcePos
+spanEPos spn = newPos (view spn_file spn) (view spn_eline spn) (view spn_ecol spn)
+currentPos :: ExprSpan -> (SourcePos, SourcePos)
+currentPos = views exp_annot (\spn -> (spanSPos spn, spanEPos spn))
 
 levelFixity :: Fixity' -> PrecLevel -> [OperatorRepr]
 levelFixity fix = fromMaybe [] . Map.lookup fix
@@ -246,10 +295,10 @@ exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
 exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
 
 satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpParser ExprSpan
-satisfy' = token nextPos
+satisfy' = token currentPos'
     where
-        nextPos :: Int -> SourcePos -> ExprSpan -> SourcePos
-        nextPos _tab _p = spanPos . view exp_annot
+        currentPos' :: Int -> SourcePos -> ExprSpan -> SourcePos
+        currentPos' _tab _p = views exp_annot spanEPos
 
 satisfy :: [Message] -> (ExprSpan -> Bool) -> OpParser ExprSpan
 satisfy errs guard = satisfy' testExpr
@@ -298,16 +347,15 @@ generateOpParser inputVars = topP <* eof
                         clean = dropWhile isNothing
 
         precTable :: OpParser PrecTable
-        precTable = gets (buildTable . sort . filterByParts . fmap snd . ST.toList)
+        precTable = uses st_table (buildTable . sort . filterByParts . fmap snd . ST.toList)
             where
                 filterByParts :: [Operator] -> [Operator]
                 filterByParts = filter hasPart
                     where
                         hasPart :: Operator -> Bool
-                        hasPart = all (flip elem inputVars) . opPrts
-                            where
-                                opPrts :: Operator -> [String]
-                                opPrts = fmap fromJust . filter isJust . view op_prts
+                        hasPart = any (`elem` inputVars) . opParts
+                        opParts :: Operator -> [String]
+                        opParts = toListOf (op_prts.each._Just)
 
                 sort :: [Operator] -> [Operator]
                 sort = sortBy (compare `on` previewOpPrec)
@@ -338,7 +386,6 @@ generateOpParser inputVars = topP <* eof
                                         opInfo :: (Fixity (), [OperatorRepr])
                                         opInfo = (view op_fix op, [view op_prts op])
 
-
         topP :: OpParser ExprSpan
         topP = precTable >>= choice . foldr' go [bottomP]
             where
@@ -354,7 +401,7 @@ generateOpParser inputVars = topP <* eof
             where
                 -- this tries to get a basic token, if we couldn't get even one,
                 -- it gets any token, and then continues with the basic tokens,
-                -- so `if if a then b else c` is parsed `if_then_else_ (if a) b c`
+                -- so `if a then if b else c` is parsed `if_then_else_ a (if b) c`
                 -- instead of giving a parse error
                 _cleverTokens :: OpParser [ExprSpan]
                 _cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
@@ -400,7 +447,7 @@ generateOpParser inputVars = topP <* eof
                         leftHS    <- holeP
                         (_, clxs) <- closedPartP op
                         rightHS   <- holeP
-                        let spn = (srcSpanSpan `on` (view exp_annot)) leftHS rightHS
+                        let spn = (srcSpanSpan `on` view exp_annot) leftHS rightHS
                             nam = opStr op
                             xs  = leftHS <| (clxs |> rightHS)
                         return (Apply (Var nam spn <| xs) spn)

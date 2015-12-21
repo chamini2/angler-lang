@@ -9,7 +9,9 @@ module Language.Angler.Error
 
 import           PrettyShow
 
-import           Prelude hiding (IOError)
+import           Data.List      (intercalate)
+
+import           Prelude        hiding (IOError)
 
 ticks :: String -> String
 ticks s = "`" ++ s ++ "`"
@@ -96,8 +98,7 @@ data CheckError
   | CErrNotInSymbolTable        String
 
   -- mixfix parser
-  | CErrExpected                String
-  | CErrUnexpected              String
+  | CErrMixfix                  [String] [String] [String]
 
   -- compact
   | CErrExpectingInsteadOf      String String
@@ -115,8 +116,15 @@ instance Show CheckError where
                 CErrAlreadyInSymbolTable idn -> "identifier " ++ ticks idn ++ " has already been declared at this scope"
                 CErrNotInSymbolTable     idn -> "identifier " ++ ticks idn ++ " is not in the symbol table"
                 -- mixfix parser
-                CErrExpected              tk -> "in mixfix parser, expected " ++ ticks tk
-                CErrUnexpected            tk -> "in mixfix parser, unexpected " ++ ticks tk
+                CErrMixfix          es us ms -> "in mixfix parser,\n\t" ++
+                                                caseMsg "unexpected " us ++
+                                                caseMsg "expected " es ++
+                                                concatMap (++"\n") ms
+                    where
+                        caseMsg :: String -> [String] -> String
+                        caseMsg msg strs = case strs of
+                                [] -> ""
+                                _  -> msg ++ intercalate " or " strs ++ "\n\t"
                 -- compact
                 CErrExpectingInsteadOf   e f -> "expecting " ++ ticks e ++ " instead of " ++ ticks f
                 -- typecheck
