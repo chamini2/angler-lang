@@ -20,7 +20,7 @@ closed Bool : Type with
         False : Bool
 
 operator if_then_else_ prefix 1
-if_then_else_ : forall x:Type . Bool -> x -> x
+if_then_else_ : forall x:Type . Bool -> x -> x -> x
 if True then x else _ = x
 if False then _ else y = y
 

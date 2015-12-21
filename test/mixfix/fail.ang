@@ -10,7 +10,11 @@ operator -_                 prefix  7
 operator _!                 postfix 8
 operator <_>                closed
 
--- x = ^
--- x = a ==
-x = a == b /= c
+x = if a then else
+x = if a then b
+x = if a then if b else c
+x = *
+x = b >
+x = a ==
+x = < x
 c = ! a

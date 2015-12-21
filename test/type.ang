@@ -23,10 +23,11 @@ closed Vect : Nat -> Type -> Type with
         Nil  : forall t:Type        . Vect Z t
         _::_ : forall u:Type, n:Nat . u -> Vect n u -> Vect (S n) u
 
+
 operator _++_ infixR 9
 _++_ : forall nn:Nat, mm:Nat, x:Type . Vect nn x -> Vect mm x -> Vect (nn+mm) x
 _++_ Nil = id
-l::ls ++ rs = l :: (ls ++ rs)
+-- l::ls ++ rs = l :: (ls ++ rs)
 
 not : Bool -> Bool
 not True  = False
@@ -72,6 +73,22 @@ k = length (False :: True :: Nil)
 closed List : Type -> Type with
         LNil : forall x:Type . List x
         Cons : forall x:Type . x -> List x -> List x
+
+operator [_    prefix  9
+operator  _;_  infixR  10
+operator    _] postfix 11
+
+[_ : forall t:Type . List t -> List t
+[_ = id
+
+_;_ : forall t:Type . t -> List t -> List t
+_;_ = Cons
+
+_] : forall t:Type . t -> List t
+xs ] = xs ; LNil
+
+sugarTest : List Nat
+sugarTest = [1;2;3]
 
 concat : forall a:Type . List a -> List a -> List a
 concat LNil rs = rs
