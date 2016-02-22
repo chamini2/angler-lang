@@ -1,4 +1,4 @@
-export (Nat, filter)
+module All exports (Nat, filter)
 
 -- import List as L (_::_, Nil)
 -- import List (List)
@@ -9,34 +9,51 @@ closed List : Type -> Type with
 
 open Char : Type
 
+String : Type
+String = List Char
+
 id : forall t:Type . t -> t
 the : (select t:Type) -> t -> t
 
 id x = x
-the t x = id { t = t } x
+the _ x = x
+-- the t x = id { t = t } x                -- PARSE ERROR: implicit apply not supported
 
 operator _._ infixL 10
-_._ : forall a:Type, b:Type, c:Type . (b -> c) -> (a -> b) -> a -> c
+_._ : forall a, b, c:Type . (b -> c) -> (a -> b) -> a -> c
 _._ f g x = f (g x)
 
 operator _$_ infixL 1
-_$_ : forall a:Type, b:Type . (a -> b) -> a -> b
+_$_ : forall a, b:Type . (a -> b) -> a -> b
 f $ x = f x
 
 closed Nat : Type with
         Z : Nat
         S : Nat -> Nat
 
-String : Type
-String = List Char
-
 closed Bool : Type with
         True  : Bool
         False : Bool
 
--- Bool = Nat           -- error: Bool is data type
--- True = False         -- error: True is constructor
+operator _:*:_  infixR 2
+operator _;_    infixR 2
+closed _:*:_ : Type -> Type -> Type with        -- tuples
+        _;_ : forall a, b:Type . a -> b -> a :*: b
 
+curry : forall a, b, c:Type . ((a :*: b) -> c) -> a -> b -> c
+curry f x y = f (x ; y)
+
+threeTuple : Nat :*: Bool :*: Type
+threeTuple = Z ; True ; Nat
+
+fst' : forall a, b, c:Type . a :*: b :*: c -> a
+fst' (x ; _ ; _) = x
+
+-- Bool = Nat           -- Bool is data type   | ERROR: expecting `function` instead of `closed type`
+-- True = False         -- True is constructor | ERROR: expecting `function` instead of `closed type`
+
+
+-- should this be allowed? It is what basically happens in any `closed` or `open`
 reopen Type with
         Tipo : Type -> Type
 
@@ -73,31 +90,35 @@ _+_ : t -> t -> t
         where   t : Type
                 t = Nat
 -- t no está disponible aquí
-Z     +   m = m
-(S n) +   m = S (n + m)
-_+_ Z     m = m
-_+_ (S n) m = S (n + m)
+Z   +   m = m
+S n +   m = S (n + m)
+-- _+_ Z     m = m
+-- _+_ (S n) m = S (n + m)
 
 filter : forall t:Type . (t -> Bool) -> List t -> List t
 filter g (x :: xs) =
         (if g x
                 then _::_ x
                 else id) filter g xs
-filter _ (Nil) = Nil
+filter _ Nil = Nil
 
 filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists m:Nat . Vect m t
 filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
-filterVect _ (Nil    ) = Nil
+filterVect _ Nil       = Nil
 -- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
 -- filterVect _ (Nil    ) {n = Z    } = Nil
 
-const : forall a:Type, b:Type . a -> b -> b
-const = \ _ x -> x
+const : forall a, b:Type . a -> b -> b
+-- const = \ _ x -> x                   -- PARSE ERROR: λ-function not supported
+const _ x = x
 
 zeroes : List Nat -> List Nat
-zeroes = filter $ \Z -> True
+zeroes = filter isZero where
+    isZero : Nat -> Bool
+    isZero Z = True
+    -- isZero _ = False
 
-map : forall a:Type, b:Type . (a -> b) -> List a -> List b
+map : forall a, b:Type . (a -> b) -> List a -> List b
 map f = foldr (_::_ . f) Nil
 
 ones : List Nat -> List Nat

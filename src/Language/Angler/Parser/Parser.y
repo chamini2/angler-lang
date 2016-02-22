@@ -101,20 +101,17 @@ List1(r) :: { Seq r }
     : r             { pure $1  }            -- like [$1]
     | List1(r) r    { $1 |> $2 }            -- like $1 ++ [$2]
 
-ListSep0(r,sep) :: { Seq r }
+Sep0End(r,s,e) :: { Seq r }
     : {- empty -}   { empty }               -- like []
-    | ListSep1(r,sep)
-                    { $1    }
+    | Sep1(r,s) e   { $1    }
 
-ListSepEnd0(r,sep,e) :: { Seq r }
+Sep0(r,s) :: { Seq r }
     : {- empty -}   { empty }               -- like []
-    | ListSep1(r,sep) e
-                    { $1    }
+    | Sep1(r,s)     { $1    }
 
-ListSep1(r,sep) :: { Seq r }
+Sep1(r,s) :: { Seq r }
     : r             { pure $1  }            -- like [$1]
-    | ListSep1(r,sep) sep r
-                    { $1 |> $3 }            -- like $1 ++ [$3]
+    | Sep1(r,s) s r { $1 |> $3 }            -- like $1 ++ [$3]
 
 --------------------------------------------------------------------------------
 -- identifiers
@@ -158,11 +155,11 @@ Module :: { ModuleSpan }
 ----------------------------------------
 -- export and imports
 Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
-    : OPT(SND('module', QId)) OPT(FST(Export, '^;')) ListSepEnd0(Import, '^;', '^;')
+    : OPT(SND('module', QId)) OPT(FST(Export, '^;')) Sep0End(Import, '^;', '^;')
                     { ($2, $3) }
 
     Export :: { Seq IdentifierSpan }
-        : 'exports' '(' ListSep0(Id, ',') ')'
+        : 'exports' '(' Sep0(Id, ',') ')'
                         { $3 }
 
     Import :: { ImportSpan }
@@ -184,13 +181,13 @@ Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
                             {% throwPError (PErrExpectingIn "identifier" "as") $1 }
 
         ImportSpecific :: { (Seq IdentifierSpan, SrcSpan) }
-            : '(' ListSep0(Id, ',') ')'
+            : '(' Sep0(Id, ',') ')'
                             { ($2, srcSpanSpan $1 $3) }
 
 ----------------------------------------
 -- declarations, definitions
 Body :: { BodySpan }
-    : ListSep1(BodyStmt, '^;')
+    : Sep1(BodyStmt, '^;')
                     { Body $1 }
 
     CloseBrace :: { () }
@@ -292,8 +289,7 @@ Body :: { BodySpan }
                             { ($3, srcSpanSpan $1 $4) }
 
         Constructors :: { (Seq TypeBindSpan, SrcSpan) }
-            : 'with'
-                '{^' ListSep1(TypeBindWhere, '^;') '^}'
+            : 'with' '{^' Sep1(TypeBindWhere, '^;') '^}'
                             { ($3, srcSpanSpan $1 $4) }
 
         OperatorDef(fixity) :: { Tok.Fixity -> (SrcSpan -> FixitySpan) ->
@@ -334,6 +330,12 @@ Body :: { BodySpan }
             : TypeBind_(ExpId)
                             { $1 }
 
+        TypeBinds(expid) :: { Seq TypeBindSpan }
+            : Sep1(Id,',') ':' Expression_(expid)
+                            { let tb idn = TypeBind idn (Where $3 Nothing ($3^.exp_annot))
+                                        (srcSpanSpan (idn^.idn_annot) ($3^.exp_annot))
+                              in fmap tb $1 }
+
         TypeBind_(expid) :: { TypeBindSpan }
             : Id ':' Expression_(expid)
                             { TypeBind $1 (Where $3 Nothing ($3^.exp_annot))
@@ -371,8 +373,8 @@ Body :: { BodySpan }
                                 --   in pure $ foldr (\a e -> Lambda a e (s a e)) $4 $2 }
                 | 'let' '{^' Body CloseBrace 'in' Expression_(expid)
                                 { pure $ Let $3 $6 (srcSpanSpan $1 ($6^.exp_annot)) }
-                | 'forall' ListSep1(TypeBind_(QuantifierId), ',') '.' Expression_(expid)
-                                { pure $ Forall $2 $4
+                | 'forall' Sep1(TypeBinds(QuantifierId), ',') '.' Expression_(expid)
+                                { pure $ Forall (mconcat $ toList $2) $4
                                     (srcSpanSpan $1 ($4^.exp_annot)) }
                 | 'exists' TypeBind_(QuantifierId) '.' Expression_(expid)
                                 { pure $ Exists $2 $4
@@ -402,7 +404,7 @@ Body :: { BodySpan }
                 | 'forall' {- empty -} '.'
                                 {% throwPError (PErrNoIn "type binds" "forall")
                                     (srcSpanSpan $1 $2) }
-                | 'forall' ListSep1(TypeBind_(QuantifierId), ',') '.' {- empty -}
+                | 'forall' Sep1(TypeBinds(QuantifierId), ',') '.' {- empty -}
                                 {% throwPError (PErrNoIn "expression" "forall")
                                     (srcSpanSpan $1 $3) }
                 | 'exists' {- empty -} '.'
@@ -428,7 +430,7 @@ Body :: { BodySpan }
                 Term(expid) :: { ExpressionSpan }
                     : expid         { Var ($1^.idn_str) ($1^.idn_annot) }
                     | Literal       { Lit $1 ($1^.lit_annot) }
-                    | '{' ListSep1(ImplicitBinding, ',') '}'
+                    | '{' Sep1(ImplicitBinding, ',') '}'
                                     {% throwPError (PErr "implicit apply not supported")
                                                 (srcSpanSpan $1 $3) }
                                 --     { ImplicitExpr $2 (srcSpanSpan $1 $3) }
