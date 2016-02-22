@@ -19,11 +19,16 @@ ticks s = "`" ++ s ++ "`"
 data Warning
   = Warn                        String
   | TabCharacter
+  | MixfixChanged               String
 
 instance Show Warning where
         show w = "WARNING: " ++ case w of
                 Warn str     -> str
                 TabCharacter -> "tab character, use spaces instead"
+                MixfixChanged op -> "mixfix parser: operator `" ++ op ++ "`"
+
+instance PrettyShow Warning where
+        pshow = string . show
 
 data Error
   = Err         String

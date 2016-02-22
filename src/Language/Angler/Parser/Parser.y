@@ -233,17 +233,17 @@ Body :: { BodySpan }
 
         -- operator definition
         | OperatorDefPrec('prefix')
-                        {% handleOperatorDef ($1 Tok.Prefix    Prefix)             }
+                        {% handleOperatorDef ($1 Tok.Prefix Prefix)            }
         | OperatorDefPrec('postfix')
-                        {% handleOperatorDef ($1 Tok.Postfix   Postfix)            }
+                        {% handleOperatorDef ($1 Tok.Postfix Postfix)          }
         | OperatorDefPrec('infixL')
-                        {% handleOperatorDef ($1 Tok.Infix     (Infix LeftAssoc))  }
+                        {% handleOperatorDef ($1 Tok.Infix (Infix LeftAssoc))  }
         | OperatorDefPrec('infixR')
-                        {% handleOperatorDef ($1 Tok.Infix     (Infix RightAssoc)) }
+                        {% handleOperatorDef ($1 Tok.Infix (Infix RightAssoc)) }
         | OperatorDefPrec('infixN')
-                        {% handleOperatorDef ($1 Tok.Infix     (Infix NonAssoc))   }
+                        {% handleOperatorDef ($1 Tok.Infix (Infix NonAssoc))   }
         | OperatorDef('closed')
-                        {% handleOperatorDef ($1 Tok.Closedfix Closedfix)          }
+                        {% handleOperatorDef ($1 Tok.Closedfix Closedfix)      }
 
         -- behaviour namespace
         -- | BehaviourNamespace

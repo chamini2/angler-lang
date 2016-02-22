@@ -78,7 +78,10 @@ readModule options filepath handle = do
                 printStage "lexer" (Just lexSecs)
 
         (parseProg,parseSecs) <- stopwatch $ case parseProgram input loc of
-                Right (prog,ws) -> mapM_ print ws >> evaluate prog
+                Right (prog,ws) -> do
+                        when (view opt_warnings options) $
+                                mapM_ (putStrLn . prettyShow) ws
+                        evaluate prog
                 Left  err       -> pshowError err
         when (view opt_ast options) $ do
                 printStage "parser" Nothing
@@ -88,15 +91,21 @@ readModule options filepath handle = do
         -- imprts <- readImports imprtsOpts prog
 
         (mixfixProg,mixfixSecs) <- stopwatch $ case parseMixfix parseProg of
-                Right prog -> evaluate prog
-                Left  errs -> pshowErrors errs
+                Right (prog,ws) -> do
+                        when (view opt_warnings options) $
+                                mapM_ (putStrLn . prettyShow) ws
+                        evaluate prog
+                Left  errs      -> pshowErrors errs
         when (view opt_mixfix options) $ do
                 printStage "mixfix parser" Nothing
                 putStrLn (prettyShow mixfixProg)
                 printStage "mixfix parser" (Just mixfixSecs)
 
         (compactTab,compactSecs) <- stopwatch $ case compactAST mixfixProg of
-                Right (symTab,ws) -> mapM_ print ws >> evaluate symTab
+                Right (symTab,ws) -> do
+                        when (view opt_warnings options) $
+                                mapM_ (putStrLn . prettyShow) ws
+                        evaluate symTab
                 Left  errs        -> pshowErrors errs
         when (view opt_compact options) $ do
                 printStage "compact" Nothing

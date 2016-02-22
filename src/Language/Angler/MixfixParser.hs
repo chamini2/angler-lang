@@ -91,9 +91,13 @@ data LoadPrecTableState
   = LoadPrecTableState
         { _lp_table      :: OpTable
         , _lp_errors     :: [Located Error]
+        , _lp_warnings   :: [Located Warning]
         }
 
 makeLenses ''LoadPrecTableState
+
+instance STWarnings LoadPrecTableState where
+        st_warnings = lp_warnings
 
 instance STErrors LoadPrecTableState where
         st_errors = lp_errors
@@ -102,7 +106,7 @@ instance STScopedTable LoadPrecTableState Operator where
         st_table = lp_table
 
 instance Default LoadPrecTableState where
-        def = LoadPrecTableState (ST.fromFoldable [arrowOperator]) []
+        def = LoadPrecTableState (ST.fromFoldable [arrowOperator]) [] []
             where
                 arrowOperator :: (String, Operator)
                 arrowOperator = (str, op)
@@ -110,12 +114,12 @@ instance Default LoadPrecTableState where
                         str = "_->_"
                         op = Operator str (Infix RightAssoc 0 ())
 
-parseMixfix :: ModuleSpan -> Either [Located Error] ModuleSpan
+parseMixfix :: ModuleSpan -> Either [Located Error] (ModuleSpan, [Located Warning])
 parseMixfix = handleEither . runMixfix . mixfixModule
     where
-        handleEither :: (ModuleSpan, LoadPrecTableState) -> Either [Located Error] ModuleSpan
+        handleEither :: (ModuleSpan, LoadPrecTableState) -> Either [Located Error] (ModuleSpan, [Located Warning])
         handleEither (mdl, st) = let errs = view st_errors st
-                                 in if length errs > 0 then Left errs else Right mdl
+                                 in if length errs > 0 then Left errs else Right (mdl, view st_warnings st)
 
 runMixfix :: LoadPrecTable a -> (a, LoadPrecTableState)
 runMixfix = flip runState def
@@ -346,19 +350,18 @@ generateOpParser inputVars = topP <* eof
                         clean :: [Maybe String] -> [Maybe String]
                         clean = dropWhile isNothing
 
+        -- the precedence table with operators that must have at least one part
+        -- in the expression to be parsed
         precTable :: OpParser PrecTable
-        precTable = uses st_table (buildTable . sort . filterByParts . fmap snd . ST.toList)
+        precTable = uses st_table (buildTable . filterNSort . fmap snd . ST.toList)
             where
-                filterByParts :: [Operator] -> [Operator]
-                filterByParts = filter hasPart
+                filterNSort :: [Operator] -> [Operator]
+                filterNSort = sortBy (compare `on` previewOpPrec) . filter hasPart
                     where
                         hasPart :: Operator -> Bool
                         hasPart = any (`elem` inputVars) . opParts
                         opParts :: Operator -> [String]
                         opParts = toListOf (op_prts.each._Just)
-
-                sort :: [Operator] -> [Operator]
-                sort = sortBy (compare `on` previewOpPrec)
 
                 previewOpPrec :: Operator -> Maybe Int
                 previewOpPrec = preview (op_fix.fix_prec)
@@ -444,12 +447,13 @@ generateOpParser inputVars = topP <* eof
 
                 nonAssocP :: OpParser ExprSpan
                 nonAssocP = mapTryChoice (infixOps NonAssoc) $ \op -> do
-                        leftHS    <- holeP
-                        (_, clxs) <- closedPartP op
-                        rightHS   <- holeP
+                        leftHS       <- holeP
+                        (clsp, clxs) <- closedPartP op
+                        rightHS      <- holeP
                         let spn = (srcSpanSpan `on` view exp_annot) leftHS rightHS
                             nam = opStr op
                             xs  = leftHS <| (clxs |> rightHS)
+                        warn (Loc clsp (MixfixChanged nam))
                         return (Apply (Var nam spn <| xs) spn)
 
                 rightP :: OpParser ExprSpan
@@ -466,6 +470,7 @@ generateOpParser inputVars = topP <* eof
                         prefixP = mapTryChoice prefixOps $ \op -> do
                                 (spn, xs) <- closedPartP op
                                 let nam = opStr op
+                                warn (Loc spn (MixfixChanged nam))
                                 return (Var nam spn, xs)
                             where
                                 prefixOps :: [OperatorRepr]
@@ -475,11 +480,12 @@ generateOpParser inputVars = topP <* eof
 
                         rightAssocP :: ConSnoc f ExprSpan => OpParser (ExprSpan, f ExprSpan)
                         rightAssocP = mapTryChoice (infixOps RightAssoc) $ \op -> do
-                                leftHS      <- holeP
-                                (clsp,clxs) <- closedPartP op
+                                leftHS       <- holeP
+                                (clsp, clxs) <- closedPartP op
                                 let xs  = leftHS <| clxs
                                     spn = srcSpanSpan (leftHS^.exp_annot) clsp
                                     nam = opStr op
+                                warn (Loc clsp (MixfixChanged nam))
                                 return (Var nam spn, xs)
 
                 leftP :: OpParser ExprSpan
@@ -496,6 +502,7 @@ generateOpParser inputVars = topP <* eof
                         postfixP = mapTryChoice postfixOps $ \op -> do
                                 (spn, xs) <- closedPartP op
                                 let nam = opStr op
+                                warn (Loc spn (MixfixChanged nam))
                                 return (Var nam spn, xs)
                             where
                                 postfixOps :: [OperatorRepr]
@@ -510,4 +517,5 @@ generateOpParser inputVars = topP <* eof
                                 let xs  = clxs |> rightHS
                                     spn = srcSpanSpan clsp (rightHS^.exp_annot)
                                     nam = opStr op
+                                warn (Loc clsp (MixfixChanged nam))
                                 return (Var nam spn, xs)
