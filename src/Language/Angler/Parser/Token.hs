@@ -38,7 +38,8 @@ data Token
   | TkVSemicolon
 
   -- reserved words
-  | TkExport
+  | TkModule
+  | TkExports
   | TkImport
   | TkAs
   | TkOpen
@@ -94,7 +95,8 @@ instance Show Token where
                 TkVRCurly          -> "^}"
                 TkVSemicolon       -> "^;"
 
-                TkExport           -> "export"
+                TkModule           -> "module"
+                TkExports          -> "exports"
                 TkImport           -> "import"
                 TkAs               -> "as"
                 TkOpen             -> "open"

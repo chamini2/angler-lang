@@ -147,7 +147,8 @@ $white_no_nl+   ;
 reserved :: Map String Token
 reserved = Map.fromList
         -- words
-        [ ("export"   , TkExport    )
+        [ ("module"   , TkModule    )
+        , ("exports"  , TkExports   )
         , ("import"   , TkImport    )
         , ("as"       , TkAs        )
         , ("open"     , TkOpen      )

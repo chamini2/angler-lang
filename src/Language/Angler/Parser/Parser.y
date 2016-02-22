@@ -44,7 +44,8 @@ import           Data.Maybe                   (isJust, fromJust)
         '^}'                    { Loc $$ TkVRCurly       }
         '^;'                    { Loc $$ TkVSemicolon    }
 
-        'export'                { Loc $$ TkExport        }
+        'module'                { Loc $$ TkModule        }
+        'exports'               { Loc $$ TkExports       }
         'import'                { Loc $$ TkImport        }
         'as'                    { Loc $$ TkAs            }
         'open'                  { Loc $$ TkOpen          }
@@ -84,14 +85,14 @@ import           Data.Maybe                   (isJust, fromJust)
 %%
 
 -- for general use
-Maybe(r) :: { Maybe r }
+FST(p,q)  : p q     { $1      }
+SND(p,q)  : p q     { $2      }
+BOTH(p,q) : p q     { ($1,$2) }
+OPT(r) :: { Maybe r }
     : {- empty -}   { Nothing }
     | r             { Just $1 }
 
-MaybeEnd(r,e) :: { Maybe r }
-    : {- empty -}   { Nothing }
-    | r e           { Just $1 }
-
+-- lists
 List0(r) :: { Seq r }
     : {- empty -}   { empty }               -- like []
     | List1(r)      { $1    }
@@ -157,15 +158,15 @@ Module :: { ModuleSpan }
 ----------------------------------------
 -- export and imports
 Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
-    : MaybeEnd(Export, '^;') ListSepEnd0(Import, '^;', '^;')
-                    { ($1, $2) }
+    : OPT(SND('module', QId)) OPT(FST(Export, '^;')) ListSepEnd0(Import, '^;', '^;')
+                    { ($2, $3) }
 
     Export :: { Seq IdentifierSpan }
-        : 'export' '(' ListSep0(Id, ',') ')'
+        : 'exports' '(' ListSep0(Id, ',') ')'
                         { $3 }
 
     Import :: { ImportSpan }
-        : 'import' QId Maybe(ImportAs) Maybe(ImportSpecific)
+        : 'import' QId OPT(ImportAs) OPT(ImportSpecific)
                         { Import ($2^.idn_str) $3 (fmap fst $4)
                             (srcSpanSpan $1
                                 (fromJust (msum
@@ -200,7 +201,7 @@ Body :: { BodySpan }
         -- open type definition
             -- open Currency with
             --     USD : Nat -> Currency
-        : 'open' Id ':' ExpressionWhere Maybe(Constructors)
+        : 'open' Id ':' ExpressionWhere OPT(Constructors)
                         { OpenType $2 $4 ($5 & _Just %~ fst)
                             (srcSpanSpan $1 (maybe ($4^.whre_annot) snd $5)) }
 
@@ -325,7 +326,7 @@ Body :: { BodySpan }
             | ArrowId       { $1 }
 
         TypeBindWhere :: { TypeBindSpan }
-            : TypeBind Maybe(Where)
+            : TypeBind OPT(Where)
                             { $1 & typ_type %~ \whre ->
                                 getWhere $2 (whre^.whre_insd) exp_annot }
 
@@ -341,7 +342,7 @@ Body :: { BodySpan }
     ----------------------------------------
 
         ExpressionWhere :: { ExprWhereSpan }
-            : Expression Maybe(Where)
+            : Expression OPT(Where)
                             { getWhere $2 $1 exp_annot }
 
         Expression :: { ExpressionSpan }
