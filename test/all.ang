@@ -3,6 +3,7 @@ module All exports (Nat, filter)
 -- import List as L (_::_, Nil)
 -- import List (List)
 
+operator _::_ infixR 20
 closed List : Type -> Type with
         Nil  : forall t:Type . List t
         _::_ : forall t:Type . t -> List t -> List t
@@ -78,9 +79,10 @@ foldr _ Nil y = y
 
 operator if_then_else_ prefix 0
 if_then_else_ : forall t:Type . Bool -> t -> t -> t
-if_then_else_ True yes _ = yes
+if True then yes else _ = yes
 if_then_else_ False _ no = no
 
+operator _:::_ infixR 20
 closed Vect : Nat -> Type -> Type with
         VNil  : forall t:Type . Vect Z t
         _:::_ : forall t:Type, n:Nat . t -> Vect n t -> Vect (S n) t
@@ -96,17 +98,16 @@ S n +   m = S (n + m)
 -- _+_ (S n) m = S (n + m)
 
 filter : forall t:Type . (t -> Bool) -> List t -> List t
-filter g (x :: xs) =
-        (if g x
-                then _::_ x
-                else id) filter g xs
-filter _ Nil = Nil
+filter g xs =
+        case xs : forall t:Type . List t of
+                x :: xs = (if g x then _::_ x else id) filter g xs
+                Nil = Nil
 
 filterVect : forall t:Type, n:Nat . (t -> Bool) -> Vect n t -> exists m:Nat . Vect m t
-filterVect g (x :: xs) = (if g x then _::_ x else id) filterVect g xs
-filterVect _ Nil       = Nil
--- filterVect g (x :: xs) {n = S nxt} = (if g x then _::_ x else id) filterVect {n = nxt} g xs
--- filterVect _ (Nil    ) {n = Z    } = Nil
+filterVect g (x ::: xs) = (if g x then _:::_ x else id) filterVect g xs
+filterVect _ Nil        = Nil
+-- filterVect g (x ::: xs) {n = S nxt} = (if g x then _:::_ x else id) filterVect {n = nxt} g xs
+-- filterVect _ (Nil    )  {n = Z    } = Nil
 
 const : forall a, b:Type . a -> b -> b
 -- const = \ _ x -> x                   -- PARSE ERROR: λ-function not supported
