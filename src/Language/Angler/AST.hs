@@ -13,14 +13,13 @@ import           Language.Angler.Program     ( Identifier(..), IdentifierSpan, i
                                              , Fixity(..), FixitySpan, fix_assoc, fix_prec, fix_annot
                                              , Associativity(..) )
 import           Language.Angler.SrcLoc
-import           Language.Angler.ScopedTable hiding (toList)
+import           Language.Angler.ScopedTable
 
 import           PrettyShow
 
 import           Control.Lens
 import           Control.Monad               (when)
 
-import           Data.Foldable               (toList)
 import           Data.Function               (on)
 import           Data.Maybe                  (isJust)
 import           Data.Sequence               (Seq)
@@ -67,15 +66,16 @@ data Expression a
         , _slct_typ     :: Type a
         , _exp_annot    :: a
         }
+  | CaseOf
+        { _case_arg     :: Expression a
+        , _case_typ     :: Type a
+        , _case_alts    :: Seq (CaseAlt a)
+        , _exp_annot    :: a
+        }
   | Implicit
         { _impl_exprs   :: SymbolScope a
         , _exp_annot    :: a
         }
-  -- | CaseOf
-  --       { _case_arg     :: Expression a
-  --       , _case_alts    :: Seq (CaseAlt a)
-  --       , _exp_annot    :: a
-  --       }
   | DontCare
         { _dnt_replace  :: Maybe String
         , _exp_annot    :: a
@@ -106,14 +106,14 @@ type TypeSpan       = Expression SrcSpan
 type Argument       = Expression
 type ArgumentSpan   = Expression SrcSpan
 
--- data CaseAlt a
---   = CaseAlt
---         { _calt_arg     :: Argument a
---         , _calt_expr    :: Expression a
---         , _calt_annot   :: a
---         }
---   deriving Show
--- type CaseAltSpan = CaseAlt SrcSpan
+data CaseAlt a
+  = CaseAlt
+        { _calt_arg     :: Argument a
+        , _calt_expr    :: Expression a
+        , _calt_annot   :: a
+        }
+  deriving Show
+type CaseAltSpan = CaseAlt SrcSpan
 
 data TypeBind a
   = TypeBind
@@ -230,7 +230,7 @@ instance PrettyShow (Expression a) where
                                 _ -> when paren (string s)
                         exprCase :: PrettyShowed
                         exprCase = case expr of
-                                Var str _  -> string "«" >> string str >> string "»"
+                                Var str _  -> string ("«" ++ str ++ "»")
                                 Lit lit _  -> pshow lit
                                 Apply fn ov _ -> pshow' True fn >> string " " >> pshow' True ov
                                 Lambda arg x _ -> do
@@ -241,25 +241,35 @@ instance PrettyShow (Expression a) where
                                         string "let"
 
                                         raise >> line
-                                        pshows line (toList bdy)
+                                        pshows line bdy
                                         lower >> line >> lower
 
                                         string "in "
                                         pshow x
                                 Forall typs x _ -> do
                                         string "forall "
-                                        pshows (string ", ") (toList typs)
+                                        pshows (string ", ") typs
                                         string " . "
                                         pshow x
                                 Exists typ x _ -> do
                                         string "exists " >> pshow typ
                                         string " . " >> pshow x
-                                Select str typ _ -> string "select " >> string str >> string " : " >> pshow typ
+                                Select str typ _ -> string ("select " ++ str ++ " : ") >> pshow typ
+                                CaseOf arg typ alts _ -> do
+                                        raise >> line
+                                        string "case " >> pshow arg >> string " of"
+
+                                        raise >> line
+                                        pshows line alts
+                                        lower >> lower >> line
                                 Implicit ims _ ->
-                                        string "{" >> pshows (string ", ") (toList ims) >> string "}"
+                                        string "{" >> pshows (string ", ") ims >> string "}"
                                 DontCare _ _ -> string "_"
                                 Arrow f t _ -> pshow f >> string " -> " >> pshow t
                                 TypeType _ -> string "Type"
+
+instance PrettyShow (CaseAlt a) where
+        pshow (CaseAlt arg expr _) = pshow arg >> string " = " >> pshow expr
 
 instance PrettyShow (TypeBind a) where
         pshow (TypeBind name expr _) = string name >> string " : " >> pshow expr

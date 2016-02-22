@@ -140,6 +140,12 @@ data Expression a
         { _slct_type    :: TypeBind a
         , _exp_annot    :: a
         }
+  | CaseOf
+        { _case_arg     :: Expression a
+        , _case_type    :: Expression a
+        , _case_alts    :: Seq (CaseAlt a)
+        , _exp_annot    :: a
+        }
   | ImplicitExpr
         { _impl_exprs   :: Implicits a
         , _exp_annot    :: a
@@ -152,6 +158,15 @@ instance Show a => ShowToken (Expression a) where
 
 instance Show a => ShowToken [Expression a] where
         showToken = concatMap prettyShow
+
+data CaseAlt a
+  = CaseAlt
+        { _csal_arg     :: Argument a
+        , _csal_expr    :: ExprWhere a
+        , _csal_annot   :: a
+        }
+  deriving Show
+type CaseAltSpan = CaseAlt SrcSpan
 
 data TypeBind a
   = TypeBind
@@ -259,6 +274,7 @@ makeLenses ''Body
 makeLenses ''BodyStmt
 makeLenses ''Where
 makeLenses ''Expression
+makeLenses ''CaseAlt
 makeLenses ''TypeBind
 makeLenses ''Fixity
 makeLenses ''Argument
@@ -366,8 +382,7 @@ instance PrettyShow (Expression a) where
                                         pshow bdy
                                         lower >> line >> lower
 
-                                        string "in "
-                                        pshow x
+                                        string "in " >> pshow x
                                 Forall typs x _ -> do
                                         string "forall "
                                         pshows (string ", ") typs
@@ -377,6 +392,14 @@ instance PrettyShow (Expression a) where
                                         string "exists " >> pshow typ
                                         string " . " >> pshow x
                                 Select typ _ -> string "select " >> pshow typ
+                                CaseOf arg typ alts _ -> do
+                                        raise >> line
+                                        string "case " >> pshow arg
+                                        string " : " >> pshow typ >> string " of"
+
+                                        raise >> line
+                                        pshows line alts
+                                        lower >> lower >> line
                                 ImplicitExpr ims _ ->
                                         string "{" >> pshows (string ", ") ims >> string "}"
                         pshows' :: Foldable f => String -> f (Expression a) -> PrettyShowed
@@ -399,6 +422,9 @@ instance PrettyShow (Fixity a) where
                 Prefix      pr _ -> string "prefix" >> string (" " ++ show pr)
                 Postfix     pr _ -> string "postfix" >> string (" " ++ show pr)
                 Closedfix      _ -> string "closed"
+
+instance PrettyShow (CaseAlt a) where
+        pshow (CaseAlt arg expr _) = pshow arg >> string " = " >> pshow expr
 
 instance PrettyShow (TypeBind a) where
         pshow (TypeBind idn typ _) = lstring idn_str idn >> string " : " >> pshow typ

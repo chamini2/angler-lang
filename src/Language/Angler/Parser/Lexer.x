@@ -161,6 +161,8 @@ reserved = Map.fromList
         , ("forall"   , TkForall    )
         , ("exists"   , TkExists    )
         , ("select"   , TkSelect    )
+        , ("case"     , TkCase      )
+        , ("of"       , TkOf        )
         -- , ("behaviour", TkBehaviour )
         -- , ("on"       , TkOn        )
         -- , ("is"       , TkIs        )
@@ -274,9 +276,10 @@ identifier idTk span buf len = case Map.lookup str reserved of
         -- add an opening curly brace.
         maybeLayout :: Token -> LP ()
         maybeLayout tk = case tk of
-                TkWhere -> pushM lp_lex_state layout   -- for .. where ..
-                TkWith  -> pushM lp_lex_state layout   -- for type constructors
-                TkLet   -> pushM lp_lex_state layout   -- for let .. in ..
+                TkWhere -> pushM lp_lex_state layout    -- for .. where ..
+                TkWith  -> pushM lp_lex_state layout    -- for type constructors
+                TkLet   -> pushM lp_lex_state layout    -- for let .. in ..
+                TkOf    -> pushM lp_lex_state layout    -- for case .. of ..
                 _       -> return ()
 
 fixity :: (String -> Fixity -> Token) -> String -> Token

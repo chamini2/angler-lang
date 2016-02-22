@@ -112,7 +112,7 @@ readModule options filepath handle = do
                 putStrLn (prettyShow compactTab)
                 printStage "compact" (Just compactSecs)
 
-        return undefined
+        return compactTab
     where
         printStage :: String -> Maybe Double -> IO ()
         printStage stage msecs = do

@@ -53,7 +53,7 @@ runPrettyShowIndent n str = views ps_lines showLines . flip execState initialST
         showLines = intercalate "\n" . fmap indent . reverse
             where
                 indent :: (Indentation, String) -> String
-                indent (ind, str) = tabs ind ++ str
+                indent (ind, str') = tabs ind ++ str'
                 tabs :: Indentation -> String
                 tabs ind = concat (replicate ind str)
         initialST :: PrettyShowState

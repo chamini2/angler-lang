@@ -58,6 +58,8 @@ import           Data.Maybe                   (isJust, fromJust)
         'forall'                { Loc $$ TkForall        }
         'exists'                { Loc $$ TkExists        }
         'select'                { Loc $$ TkSelect        }
+        'case'                  { Loc $$ TkCase          }
+        'of'                    { Loc $$ TkOf            }
         -- 'on'                    { Loc $$ TkOn            }
         -- 'behaviour'             { Loc $$ TkBehaviour     }
         -- 'is'                    { Loc $$ TkIs            }
@@ -382,6 +384,8 @@ Body :: { BodySpan }
                 | 'select' TypeBind_(expid)
                                 { pure $ Select $2
                                     (srcSpanSpan $1 ($2^.typ_annot)) }
+                | 'case' Expression ':' Expression 'of' '{^' Sep1(CaseAlt, '^;') '^}'
+                                { pure $ CaseOf $2 $4 $7 (srcSpanSpan $1 $8) }
                 | Term(expid) ExpressionList_(expid)
                                 { $1 <| $2 }
                 | Term(expid)
@@ -426,6 +430,11 @@ Body :: { BodySpan }
                     : QId           { $1 }
                     | ArrowId       { $1 }
                     | EqualsId      { $1 }
+
+                CaseAlt :: { CaseAltSpan }
+                    : Argument(FunId) '=' ExpressionWhere
+                                    { CaseAlt $1 $3
+                                        (srcSpanSpan ($1^.arg_annot) ($3^.whre_annot)) }
 
                 Term(expid) :: { ExpressionSpan }
                     : expid         { Var ($1^.idn_str) ($1^.idn_annot) }

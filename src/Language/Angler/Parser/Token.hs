@@ -52,6 +52,8 @@ data Token
   | TkForall
   | TkExists
   | TkSelect
+  | TkCase
+  | TkOf
   -- | TkBehaviour
   -- | TkOn
   -- | TkIs
@@ -109,6 +111,8 @@ instance Show Token where
                 TkForall           -> "forall"
                 TkExists           -> "exists"
                 TkSelect           -> "select"
+                TkCase             -> "case"
+                TkOf               -> "of"
                 -- TkBehaviour        -> "behaviour"
                 -- TkOn               -> "on"
                 -- TkIs               -> "is"

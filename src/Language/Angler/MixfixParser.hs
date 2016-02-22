@@ -210,6 +210,10 @@ mixfixExpression expr = case expr of
 
         Select {}       -> expr & slct_type mixfixTypeBind
 
+        CaseOf {}       -> expr & case_arg mixfixExpression
+                              >>= case_type mixfixExpression
+                              >>= case_alts (mapM mixfixCaseAlt)
+
         ImplicitExpr {} -> expr & impl_exprs (mapM mixfixImplicit)
 
     where
@@ -239,6 +243,9 @@ messagesError = uncurry' . foldl' go ([], [], [])
 
         uncurry' :: ([String], [String], [String]) -> CheckError
         uncurry' (exs, uns, mss) = CErrMixfix exs uns mss
+
+mixfixCaseAlt :: CaseAltSpan -> LoadPrecTable CaseAltSpan
+mixfixCaseAlt csal = csal & csal_arg mixfixArgument >>= csal_expr mixfixExprWhere
 
 mixfixTypeBind :: TypeBindSpan -> LoadPrecTable TypeBindSpan
 mixfixTypeBind = typ_type mixfixExprWhere

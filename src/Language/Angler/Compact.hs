@@ -243,6 +243,14 @@ compactExpression = bracketSc . processExpression
                             typ = view sym_type sym
                         return (Select str typ an, typeType)
 
+                P.CaseOf arg typ alts an -> do
+                        (arg', argTyp) <- compactExpression arg
+                        (typ', typTyp) <- compactExpression typ
+                        unify an argTyp typ'
+                        unify an typTyp typeType
+                        -- mapM (compactCaseAlt typ') alts
+                        return (CaseOf arg' typ' empty an, dontCare)
+
                 P.ImplicitExpr impls an -> bracketSc $ do
                         mapM_ compactImplicits impls
                         scope <- topSc
