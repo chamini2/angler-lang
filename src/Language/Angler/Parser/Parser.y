@@ -157,8 +157,8 @@ Module :: { ModuleSpan }
 ----------------------------------------
 -- export and imports
 Top :: { (Maybe (Seq IdentifierSpan), Seq ImportSpan) }
-    : OPT(SND('module', QId)) OPT(FST(Export, '^;')) Sep0End(Import, '^;', '^;')
-                    { ($2, $3) }
+    : OPT(SND('module', QId)) OPT(Export) OPT('^;') Sep0End(Import, '^;', '^;')
+                    { ($2, $4) }
 
     Export :: { Seq IdentifierSpan }
         : 'exports' '(' Sep0(Id, ',') ')'
