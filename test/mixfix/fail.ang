@@ -10,11 +10,14 @@ operator -_                 prefix  7
 operator _!                 postfix 8
 operator <_>                closed
 
-x = if a then else
+-- "expects" the operators in the line only. Maybe remove the "expected «op»" message
+x = if a then
+            else
 x = if a then b
-x = if a then if b else c
+x = if a then if b         else c
 x = *
-x = b >
-x = a ==
-x = < x
-c = ! a
+x = a
+            >
+x = < a
+x = a + b !
+            c

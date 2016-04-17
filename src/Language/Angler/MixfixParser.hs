@@ -34,7 +34,7 @@ import qualified Data.Map.Strict             as Map
 import           Text.Megaparsec             (ParsecT, runParserT', choice, eof, token, try)
 import           Text.Megaparsec.Error       (ParseError, Message(..), errorMessages, errorPos)
 import           Text.Megaparsec.Pos         (SourcePos(..), newPos)
-import           Text.Megaparsec.Prim        (MonadParsec)
+import           Text.Megaparsec.Prim        (MonadParsec, Stream)
 import qualified Text.Megaparsec.Prim        as TM
 import           Text.Megaparsec.ShowToken   (ShowToken(..))
 
@@ -119,7 +119,9 @@ parseMixfix = handleEither . runMixfix . mixfixModule
     where
         handleEither :: (ModuleSpan, LoadPrecTableState) -> Either [Located Error] (ModuleSpan, [Located Warning])
         handleEither (mdl, st) = let errs = view st_errors st
-                                 in if length errs > 0 then Left errs else Right (mdl, view st_warnings st)
+                                 in if length errs > 0
+                                         then Left errs
+                                         else Right (mdl, view st_warnings st)
 
 runMixfix :: LoadPrecTable a -> (a, LoadPrecTableState)
 runMixfix = flip runState def
@@ -283,10 +285,16 @@ runOpParser :: OpParser a -> SrcSpan -> [ExprSpan] -> LoadPrecTable (Either Pars
 runOpParser act spn input = snd <$> runParserT' act initialState
     where
         initialState :: TM.State [ExprSpan]
-        initialState = TM.State input (spanSPos spn) 8
+        initialState = TM.State input (spanSPos spn) 4
 
 ----------------------------------------
 -- DSL connections
+
+instance Stream [ExprSpan] ExprSpan where
+    uncons []     = Nothing
+    uncons (e:es) = Just (e,es)
+
+    updatePos _ _ _ = currentPos
 
 spanSPos :: SrcSpan -> SourcePos
 spanSPos spn = newPos (view spn_file spn) (view spn_sline spn) (view spn_scol spn)
@@ -305,22 +313,20 @@ type ConSnoc f a = (Alternative f, Cons (f a) (f a) a a, Snoc (f a) (f a) a a)
 exprListSpan :: ConSnoc f ExprSpan => f ExprSpan -> SrcSpan
 exprListSpan xs = srcSpanSpan (xs^?!_head.exp_annot) (xs^?!_last.exp_annot)
 
-satisfy' :: (ExprSpan -> Either [Message] ExprSpan) -> OpParser ExprSpan
-satisfy' = token currentPos'
-    where
-        currentPos' :: Int -> SourcePos -> ExprSpan -> SourcePos
-        currentPos' _tab _p = views exp_annot spanEPos
-
-satisfy :: [Message] -> (ExprSpan -> Bool) -> OpParser ExprSpan
-satisfy errs guard = satisfy' testExpr
+satisfy' :: [Message] -> (ExprSpan -> Bool) -> OpParser ExprSpan
+satisfy' errs guard = token testExpr
     where
         testExpr :: ExprSpan -> Either [Message] ExprSpan
         testExpr x = if guard x
                 then Right x
                 else Left (Unexpected (showToken x) : errs)
 
+satisfy :: (ExprSpan -> Bool) -> OpParser ExprSpan
+satisfy = satisfy' []
+
 var :: String -> OpParser ExprSpan
-var str = satisfy [Expected str] sameVar
+var str = satisfy' [Expected str] sameVar
+-- var str = satisfy sameVar
     where
         sameVar :: ExprSpan -> Bool
         sameVar x = case x of
@@ -417,13 +423,14 @@ generateOpParser inputVars = topP <* eof
                 _cleverTokens = cons <$> (try basicToken <|> anyToken) <*> many basicToken
                     where
                         anyToken :: OpParser ExprSpan
-                        anyToken = satisfy [] (const True)
+                        anyToken = satisfy (const True)
 
                 basicToken :: OpParser ExprSpan
                 basicToken = try obviousToken <|> closedfixP
                     where
                         obviousToken :: OpParser ExprSpan
-                        obviousToken = precTable >>= satisfy [Expected "identifier"] . notOpPart
+                        obviousToken = precTable >>= satisfy' [Expected "identifier"] . notOpPart
+                        -- obviousToken = precTable >>= satisfy . notOpPart
                             where
                                 notOpPart :: PrecTable -> ExprSpan -> Bool
                                 notOpPart prec x = case x of
